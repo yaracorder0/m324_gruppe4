@@ -1,12 +1,14 @@
 # M324 - Ticket System
 
-### Lernjournal 
-- [Anik](Lernjournal/Anik.md)
-- [Katarina](Lernjournal/Katarina.md)
-- [Yara](Lernjournal/Yara.md)
+### [Zeitlogging](https://docs.google.com/spreadsheets/d/17e9LMVPYqv1bTdXw913_RSP1YrC4l1ToeMtOxQgsptQ/edit?usp=sharing) 
+
+### [Kanban Board](https://github.com/users/yaracorder0/projects/1)
+
+### [Dokumentation](Dokumentation)
 
 ---
 
-### [Timesheet](https://docs.google.com/spreadsheets/d/17e9LMVPYqv1bTdXw913_RSP1YrC4l1ToeMtOxQgsptQ/edit?usp=sharing) 
-
-### [Kanban Board](https://miro.com/welcomeonboard/ZkJOZGEzNUVFQnd0aCsvMDRRU3d4b3VVTUFJejh3VzZDWWw4aGZmVVJFSjZRQjd6Y0tUbVhBWkRrMkJ0eTF2WGxPUjJWN1VHcTVuMkgyWEJYVjZEclF6MFg1UFBoQnA3ZFIrVUh3ZENYU1lMSUMra3dHYmtKOTljdUF2OUdoMmZhWWluRVAxeXRuUUgwWDl3Mk1qRGVRPT0hdjE=?share_link_id=886109861320)
+### Lernjournal
+- [Anik](https://github.com/Annniiikkk/M324_Lernjournal)
+- [Katarina](https://docs.google.com/document/d/1el_p7bzdW--ECTEN-wacaIZpOr6AKe6Lbfxn2Tso7wE/edit?usp=sharing)
+- [Yara](https://github.com/yaracorder0/m324_lernjournal)
