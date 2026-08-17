@@ -4,6 +4,8 @@
 
 ### [Kanban Board](https://github.com/users/yaracorder0/projects/1)
 
+### [Theorieblöcke](Theorie)
+
 ### [Dokumentation](Dokumentation)
 
 ---
