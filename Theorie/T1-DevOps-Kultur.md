@@ -8,16 +8,18 @@
 - [Bewertung der Transformation](#Bewertung-der-Transformation)
 
 ## Neue Begriffe
-*Entwicklungszyklen*
-- Phase, die ein Feature von der Anforderung über Development und Testing bis zur Produktion durchläuft. 
-*Silos*
+#### *Entwicklungszyklen*
+- Phase, die ein Feature von der Anforderung über Development und Testing bis zur Produktion durchläuft
+#### *Silos*
 - Organisatorische Abgrenzung zwischen Entwicklung und Betrieb
-*Lead Time*
-- Gesamtzeit vom Erstellen eines Tickets bis zum deployment
-*Processing Time
-- Netto arbeitszeit an einem Ticket, ohne Wartezeiten auf Reviews.
-*MTTR (Mean Time to Repair)*
-- Durchschnittliche Zeit von einem Fehler bis zur Behebung
+#### *Lead Time*
+- Gesamtzeit vom Erstellen eines Tickets bis zum Deployment in Produktion
+#### *Processing Time*
+- Netto arbeitszeit an einem Ticket, ohne Wartezeiten auf Reviews oder Testing
+#### *MTTR (Mean Time to Repair)*
+- Durchschnittliche Zeit von einem aufgetretenen Fehler bis zur Behebung
+#### *Deployment-Frequenz*
+- Häufigkeit, mit der neue Software Releases erfolgreich in Produktion deployed werden
 
 ## CALMS Prinzipien
 ***CALMS*** - Culture Automation Lean Measurement Sharing
@@ -40,6 +42,7 @@
 - Unnötige Prozesse und Arbeiten vermeiden 
 - Fokus auf kontinuierliche Verbesserung und Kundennutzen
 - Experimente ermöglichen, schnelleres Feedback zu sammeln, um daraus zu lernen
+- Nutzung von Kanban-Boards, zur Reduktion von Durchlaufszeiten/WIP's 
 
 ### M - Measurement (Messung)
 - Entscheidungen basieren auf Messungen und Feedback
@@ -52,6 +55,7 @@
 - Fördert Lernen innerhalb und zwischen Team 
 - Schafft Vertrauen und offene Fehlerkultur
 - Ziel ist, die Organisation soll aus Fehler lernen und Doppelarbeit vermeiden
+- Etablierung von einem zentralen Wiki, interne Lernformate und regelmässiger Erfahrungsberichte
 
 ### Fazit
 Das CALMS-Modell bietet eine klare Struktur, um die Kernelementen von DevOps zu verstehen.
@@ -62,11 +66,11 @@ Sie dient als ein Orientierungsrahmen, ersetzt aber keine Erfolgsmessung
 ## The Three Ways
 ![img.png](images/img2.png)
 
-### 1. System Thinking 
-- Fokus auf das gesamte System (anstatt Silos)
+### 1. System Thinking/Flow
+- Fokus auf das gesamte System (anstatt Silos) und das Vermeiden von lokalen optimierungen
 - Reibungsloses Zusammenarbeiten/Flow zwischen Entwicklern, Betreiber und letztendlich dem Kunden
-- Arbeiten werden sichtbar gemacht, Übergaben werden minimiert
-- Entwicklungszyklen werden gemessen und optimiert (anstatt 6-monatige Releases, zu wochentlichen)
+- Arbeiten werden sichtbar gemacht und Engpässe (Bottlenecks) identifiziert und behoben, Übergaben werden minimiert
+- Entwicklungszyklen werden gemessen und optimiert (anstatt 6 monatige Releases, zu wochentlichen)
 - Einsetzung von Kanban-Board, um die Arbeit zu visualisieren
 
 ### 2. Amplify Feedback Loop
@@ -76,7 +80,7 @@ Sie dient als ein Orientierungsrahmen, ersetzt aber keine Erfolgsmessung
 
 ### 3. Continual Learning and Experimentation
 - Wissen wird nicht gehortet, sondern stetig geteilt und im Projekt verankert
-- Fehler werden schuldlos analysiert (No Blame-Culture), um Verbesserungen zu teilen??
+- Fehler werden schuldlos analysiert (No Blame-Culture), um Verbesserungen zu teilen
 - Etablierung von Feedback-Loops und Wissensteilung, durch Workshops, Teambuilding und Erfahungsberichten
 
 ## Vergleich
@@ -90,15 +94,32 @@ Sie dient als ein Orientierungsrahmen, ersetzt aber keine Erfolgsmessung
 
 ## Bewertung der Transformation
 
-1. Automation (CALMS & Flow)
-- Löst das Problem von langen, manuellen und fehlerhaften Prozessen. Weg von Code bis Produktion wird schneller und zuverlässiger, welches man bei den wöchentlichen Releases erkennen kann.
-2. Culture (CALMS & Continuous Learning and Feedback Loops)
-- Vernichtete das Wissens hoarding und Blame Culture. Zusammenarbeit zwischen Entwicklern und Betreiber, wird grundsätzlich stabiler
+Meiner Meinung nach hatten diese zwei Veränderungen bei TechNova den grössten Nutzen:
+
+1. Automatisierung (CI/CD-Pipeline)
+- Bezug zu CALMS: Automation
+- Bezug zu The Three Ways: 1. Weg (Systems Thinking / Flow)
+- Begründung: Die manuelle Arbeit bei Tests und Deployments hat früher sehr viel Zeit gekostet und viele Fehler verursacht. Durch die CI/CD-Pipeline wurde der ganze Ablauf automatisch und viel schneller. Erst dadurch konnte TechNova von 6 monatigen Releases auf wöchentliche Releases wechseln.
+
+2. Kulturwandel (No-Blame-Culture & Teambuilding)
+- Bezug zu CALMS: Culture und Sharing
+- Bezug zu The Three Ways: 2. Way (Feedback Loops) und 3. Way (Continual Learning)
+- Begründung: Neue Tools bringen nichts, wenn Dev und Ops gegeneinander arbeiten oder Fehler verschweigen. Durch die Workshops und die No Blame Culture haben die Teams gelernt, zusammenzuarbeiten und aus Fehlern zu lernen, anstatt sich gegenseitig die Schuld zu geben.
+
 
 ## Transfer 
 
-In meinem Betrieb wird der Punkt *Sharing* aus CALMS oft angesprochen, aber im Alltag fast nicht richtig angenwendet. 
-Dokumentationen werden geschrieben, jedoch die Kultur des Austauschs und der Zusammenarbeit bleibt weiterhin ein Verbesserungspunkt.
+In meinem Betrieb müsste vor allem das **CALMS-Element: Sharing** und der **3. Weg aus The Three Ways (Continual Learning and Experimentation)** verbessert werden.
 
-Das Hauptproblem in unserem Projekt ist, dass selten die Zeit und das Budget für längere Austausche oder Workshops da sind. Im eigenen interesse des Betriebs sollte das jedoch an mehr Bedeutung gewinnen.
+Das Thema *Sharing* wird bei uns zwar oft angesprochen und es werden auch Dokumentationen geschrieben, aber im Alltag wird das Wissen fast nicht richtig geteilt. Die Entwickler arbeiten meistens eher für sich alleine.
 
+Das hängt auch direkt mit dem *3. Weg (Continual Learning and Experimentation)* zusammen: Im Projektalltag fehlen einfach die Zeit und das Budget für gemeinsame Workshops, den Austausch über Fehler oder das Ausprobieren von neuen Wegen. Im eigenen Interesse des Betriebs sollte das aber mehr Bedeutung bekommen, damit wir als Team voneinander lernen und Fehler nicht doppelt machen.
+
+---
+
+## KI-Nachweis
+
+- Prompt: "Kannst du den Transfer noch etwas natürlicher an meinen eigenen Schreibstil anpassen und die Begriffe explizit nennen?"
+- KI-Hinweis: Die KI hat die beiden geforderten Begriffe (Sharing & 3. Weg) direkt im Satz eingebunden und den Text noch direkter in meinen eigenen Worten formuliert.
+- Korrigierte Stelle: Abschnitte "Transfer" und "KI-Nachweis".
+- Eigene Schlussfolgerung: Der Abschnitt klingt jetzt komplett nach mir und erfüllt trotzdem alle Vorgaben der Lehrperson.
