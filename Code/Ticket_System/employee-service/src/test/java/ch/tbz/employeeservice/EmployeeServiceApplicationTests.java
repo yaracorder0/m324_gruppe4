@@ -1,10 +1,10 @@
-package ch.tbz.ticket_system;
+package ch.tbz.employeeservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class TicketSystemApplicationTests {
+class EmployeeServiceApplicationTests {
 
     @Test
     void contextLoads() {
