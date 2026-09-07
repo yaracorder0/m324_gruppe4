@@ -99,7 +99,7 @@ Nach der Entwicklung wird die Software getestet und anschliessend für die Berei
 Dadurch begleitet der SDLC die Software von der ersten Planung bis zum Betrieb und zur Wartung.
 
 
-![img_4.png](img_4.png)
+![img_4.png](img_7.png)
 
 ## DevOps Lifecycle
 
@@ -159,7 +159,7 @@ DevOps ist nicht nur eine Sammlung von Tools, sondern verändert auch die Zusamm
 Entwicklung und Betrieb arbeiten gemeinsam an der Software und übernehmen gemeinsam Verantwortung.
 Dadurch werden getrennte Teams bzw. Silos reduziert.
 
-![img_3.png](img_3.png)
+![img_3.png](img_6.png)
 
 Ziele von DevOps:
 - schnellere und häufigere Releases
@@ -234,7 +234,7 @@ Dadurch kann das Produkt **schrittweise und iterativ verbessert** werden.
 - Anforderungen besser an die Benutzer anpassen
 - schnelle und kontinuierliche Verbesserung
 
-![img_2.png](img_2.png)
+![img_2.png](img_5.png)
 
 
 ## Anwendung in unserem Projekt
