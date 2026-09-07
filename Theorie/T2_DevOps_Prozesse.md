@@ -247,7 +247,7 @@ Viele der einzelnen Phasen und Prinzipien sind in unserem Entwicklungsprozess di
 Auch bei unserem Ticket-System durchlaufen wir verschiedene Phasen des SDLC.
 
 - **Planung und Analyse:** Anforderungen und Funktionen des Ticket-Systems werden festgelegt und als Aufgaben geplant.
-- **Entwicklung:** Backend und Frontend werden entwickelt und die PostgreSQL-Datenbank angebunden.
+- **Entwicklung:** Backend wird entwickelt und die PostgreSQL-Datenbank angebunden.
 - **Test:** Die implementierten Funktionen werden getestet.
 - **Bereitstellung:** Die Anwendung wird mit Docker Compose in Containern bereitgestellt.
 - **Wartung:** Fehler können behoben und neue Funktionen schrittweise ergänzt werden.
