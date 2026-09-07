@@ -291,14 +291,6 @@ Dadurch können wir früh überprüfen, ob die Grundfunktionen des Ticket-System
 bevor weitere Features entwickelt werden.
 
 
-## KI Nachweis
-
-Prompt: "Kannst du meine Notizen zu unserem Projekt meinen Themen zuordnen und die Sätze besser formulieren?"  
-KI-Hinweis: Die KI hat meine Informationen zum Projekt strukturiert, den passenden Themen zugeordnet und sprachlich überarbeitet.  
-Bearbeitete Stelle: Abschnitt "Anwendung in unserem Projekt"  
-Eigene Schlussfolgerung: Der Abschnitt ist übersichtlich aufgebaut und die Zusammenhänge zwischen der Theorie und unserem Projekt sind verständlich dargestellt.
-
-
 ## Quellen
 
 https://www.ibm.com/de-de/think/topics/sdlc  
