@@ -28,6 +28,7 @@ Das Projekt verfolgt folgende Schwerpunkte:
 * **Projektmanagement:** GitHub Issue Board (Kanban)
 * **CI/CD Pipeline:** GitHub Actions
 * **Containerisierung:** Docker & Docker Compose
+* **API-Testing:** IntelliJ HTTP Client (`requests.http`) & Postman
 
 ---
 

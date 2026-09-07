@@ -1,0 +1,163 @@
+### ====================================================================
+### Microservices Endpunkte Testdatei (IntelliJ HTTP Client)
+### ====================================================================
+### Anleitung:
+### 1. Stelle sicher, dass die Docker-DB läuft (Port 5433).
+### 2. Starte beide Services in IntelliJ:
+###    - EmployeeServiceApplication (Port 8081)
+###    - TicketServiceApplication   (Port 8082)
+### 3. Klicke einfach auf das grüne Dreieck (Play-Button) links neben
+###    einem Request, um ihn direkt auszuführen!
+### ====================================================================
+
+
+### --------------------------------------------------------------------
+### MIKROSERVICE 1: EMPLOYEE SERVICE (Port 8081)
+### --------------------------------------------------------------------
+
+### 1. User Story 2: Alle Mitarbeiter abrufen (Happy Path)
+GET http://localhost:8081/api/employees
+Accept: application/json
+
+###
+
+### 2. User Story 1: Neuen Mitarbeiter anlegen (Happy Path)
+POST http://localhost:8081/api/employees
+Content-Type: application/json
+
+{
+  "firstName": "Sandro",
+  "lastName": "Keller",
+  "joinedDate": "2023-01-15",
+  "skillLevel": 4
+}
+
+###
+
+### 3. User Story 1 - Sad Path: Skill-Level ungültig (> 5)
+POST http://localhost:8081/api/employees
+Content-Type: application/json
+
+{
+  "firstName": "Peter",
+  "lastName": "Muster",
+  "joinedDate": "2022-06-01",
+  "skillLevel": 8
+}
+
+###
+
+### 4. User Story 1 - Sad Path: Pflichtfeld fehlt (Vorname leer)
+POST http://localhost:8081/api/employees
+Content-Type: application/json
+
+{
+  "firstName": "",
+  "lastName": "Muster",
+  "joinedDate": "2022-06-01",
+  "skillLevel": 3
+}
+
+###
+
+### 5. Einzelnen Mitarbeiter nach ID abrufen (z.B. ID 1)
+GET http://localhost:8081/api/employees/1
+Accept: application/json
+
+###
+
+### 6. Mitarbeiter nach ID abrufen - Sad Path (ID existiert nicht)
+GET http://localhost:8081/api/employees/9999
+Accept: application/json
+
+
+### --------------------------------------------------------------------
+### MIKROSERVICE 2: TICKET SERVICE (Port 8082)
+### --------------------------------------------------------------------
+
+### 7. User Story 3: Ticket im Status OPEN erfassen (Happy Path)
+# Weist das Ticket Mitarbeiter 1 zu (Ticket-Service validiert via Employee-Service)
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "OAuth Login Bug beheben",
+  "description": "Fehler beim Token-Refresh via Google beheben",
+  "status": "OPEN",
+  "employeeId": 1
+}
+
+###
+
+### 8. User Story 3: Ticket im Status DONE mit Datumsangaben (Happy Path)
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Performance Optimierung Datenbank",
+  "description": "Indizes auf Ticket-Tabelle hinzugefügt",
+  "status": "DONE",
+  "reviewDate": "2026-09-05T10:00:00Z",
+  "doneDate": "2026-09-06T14:30:00Z",
+  "employeeId": 2
+}
+
+###
+
+### 9. User Story 3 - Sad Path: Mitarbeiter existiert NICHT
+# Der Ticket Service fragt den Employee Service per REST ab -> 9999 gibt es nicht!
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket mit ungültigem Mitarbeiter",
+  "description": "Muss vom System abgewiesen werden",
+  "status": "OPEN",
+  "employeeId": 9999
+}
+
+###
+
+### 10. User Story 3 - Sad Path: Unzulässiges Review-Datum bei OPEN-Status
+# Bei Status OPEN darf laut Vorgabe weder Review- noch Done-Datum gesetzt sein
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket mit falschem Datum",
+  "status": "OPEN",
+  "reviewDate": "2026-09-01T10:00:00Z",
+  "employeeId": 1
+}
+
+###
+
+### 11. User Story 3 - Sad Path: Unzulässiges Done-Datum bei REVIEW-Status
+# Bei Status REVIEW darf noch kein Done-Datum gesetzt sein
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket im Review mit Done-Datum",
+  "status": "REVIEW",
+  "reviewDate": "2026-09-01T10:00:00Z",
+  "doneDate": "2026-09-02T12:00:00Z",
+  "employeeId": 1
+}
+
+###
+
+### 12. User Story 3 - Sad Path: Fehlender Mitarbeiter (Pflichtzuweisung)
+POST http://localhost:8082/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket ohne Mitarbeiter-Zuweisung",
+  "status": "OPEN"
+}
+
+###
+
+### 13. Alle Tickets abrufen (Happy Path)
+GET http://localhost:8082/api/tickets
+Accept: application/json

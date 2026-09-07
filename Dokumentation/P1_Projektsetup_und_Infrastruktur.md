@@ -40,6 +40,9 @@ Ausserdem wollen wir ein Skript erstellen, welches die Testdaten lädt, sodass a
 * **CI/CD Prozesse:**  
   Für die Automatisierung von Build- und Test-Prozessen setzen wir auf **GitHub Actions**. Da unser Repository auf GitHub liegt, lässt sich die CI/CD-Pipeline dort direkt integrieren, um bei jedem Merge Request automatisiert unsere JUnit-Tests auszuführen.
 
+* **Manuelles API-Testing (requests.http):**  
+  Für das schnelle, manuelle Testen und Verifizieren der REST-Endpunkte setzen wir auf eine direkt im Repository abgelegte **`requests.http`**-Datei (IntelliJ HTTP Client). Dadurch können alle Teammitglieder vordefinierte Anfragen für alle User Stories (sowohl Happy Paths als auch Sad Paths) direkt per Klick in der IDE ausführen, ohne externe Tools installieren oder konfigurieren zu müssen.
+
 ---
 
 ## Branching-Strategie
