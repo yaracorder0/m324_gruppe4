@@ -1,5 +1,11 @@
 # DevOps Prozesse
 
+## Inhalt
+
+- [SDLC - Software Development Life Cycle](#sdlc---software-development-life-cycle)
+- [DevOps LifeCycle](#devops-lifecycle)
+- [Vergleich SDLC vs. DevOps Lifecycle](#vergleich-sdlc-vs.-devops-lifecycle)
+- [MVP - Minimum Viable Product](#mvp---minimum-viable-product)
 
 ## SDLC - Software Development Life Cycle
 
@@ -78,7 +84,7 @@ Ziele von DevOps:
 - schnellere Reaktion auf Probleme und Feedback
 - zuverlässigere Software
 
-## Vergleich SLDC vs. DevOps Lifecycle
+## Vergleich SDLC vs. DevOps Lifecycle
 
 | SDLC | DevOps |
 |---|---|
