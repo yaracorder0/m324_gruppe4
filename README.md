@@ -28,6 +28,47 @@ Das Projekt verfolgt folgende Schwerpunkte:
 * **Projektmanagement:** GitHub Issue Board (Kanban)
 * **CI/CD Pipeline:** GitHub Actions
 * **Containerisierung:** Docker & Docker Compose
+* **API-Testing:** IntelliJ HTTP Client (`requests.http`) & Postman
+
+---
+
+## Lokale Ausführung & Testing
+
+### 1. Lokale Infrastruktur starten (Datenbank)
+Die beiden Microservices verwenden getrennte PostgreSQL-Datenbanken (`employee_db` und `ticket_db`), welche über Docker Compose bereitgestellt werden:
+```bash
+cd Code/Ticket_System
+docker compose up -d
+```
+> [!NOTE]
+> Die Datenbank läuft auf Port **5433** und initialisiert automatisch die Tabellen sowie Testdaten über das Skript `init-scripts/01-init.sql`.
+
+### 2. Tests ausführen (Unit- vs. Integrationstests)
+Die Testsuite ist klar in isolierte Unit-Tests und datenbankgestützte Integrationstests unterteilt:
+
+* **Unit-Tests (100% Offline / ohne laufende Datenbank):**
+  - Enthalten in den Testklassen `EmployeeControllerTest`, `EmployeeServiceTest`, `TicketControllerTest` und `TicketServiceTest`.
+  - Nutzen **Mockito** und **MockMvc** im Standalone-Setup. Sie laufen blitzschnell und sind völlig unabhängig von externen Systemen, Docker oder dem Netzwerk.
+  - Können jederzeit ohne Vorbedingungen ausgeführt werden:
+    ```bash
+    mvn test -Dtest=*ControllerTest,*ServiceTest
+    ```
+
+* **Integrationstests (Benötigen laufende PostgreSQL-Instanz):**
+  - Enthalten in `EmployeeIntegrationTest` und `TicketIntegrationTest`.
+  - Fahren den realen Spring-Boot-Kontext hoch und testen die Persistierung in der echten PostgreSQL-Datenbank.
+  - **Wichtig:** Diese Tests setzen voraus, dass die Docker-Datenbank auf Port 5433 läuft (`docker compose up -d`).
+  - Ausführung aller Tests (inklusive Integrationstests):
+    ```bash
+    mvn test
+    ```
+
+### 3. Microservices lokal starten
+* **Employee Service:** `ch.tbz.employeeservice.EmployeeServiceApplication` auf Port `8081`
+* **Ticket Service:** `ch.tbz.ticketservice.TicketServiceApplication` auf Port `8082`
+
+### 4. Manuelle Testdurchführung
+In der Datei [requests.http](Code/Ticket_System/requests.http) sind 13 vorkonfigurierte HTTP-Aufrufe (Happy- und Sad-Paths) enthalten, die direkt über den IntelliJ HTTP Client per Klick ausgeführt werden können.
 
 ---
 
