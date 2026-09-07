@@ -468,7 +468,7 @@ Beim Deployment unterscheidet man grundlegend zwischen der **Architektur-Ebene**
 Für unser **Ticket-System** haben wir die theoretischen Konzepte pragmatisch ausgewertet und wie folgt für unsere Infrastruktur entschieden:
 
 ### 1. Deployment-Art: Container-Composition via Docker Compose
-* **Umsetzung:** Wir nutzen ein **Container-Composition-Deployment** mit `docker compose`. Backend (Spring Boot), Frontend und die PostgreSQL-Datenbank laufen in isolierten Container-Instanzen auf einem Server.
+* **Umsetzung:** Wir nutzen ein **Container-Composition-Deployment** mit `docker compose`. Backend (Spring Boot und die PostgreSQL-Datenbank laufen in isolierten Container-Instanzen auf einem Server.
 * **Begründung:** Ein vollwertiger Kubernetes-Cluster oder Docker Swarm wäre für den Umfang unseres Ticket-Systems ein technischer Overkill. Docker Compose ermöglicht eine einfache, reproduzierbare und isolierte Ausführung auf jeder Zielumgebung.
 
 ### 2. Deployment-Strategie & Rollback: Recreate & Image-basiertes Rollback
