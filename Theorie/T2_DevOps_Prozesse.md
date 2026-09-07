@@ -259,7 +259,7 @@ Unser Vorgehen entspricht dabei eher einem **iterativen Ansatz**, da das System 
 
 Auch verschiedene DevOps-Praktiken werden in unserem Projekt eingesetzt.
 
-Backend, Frontend und PostgreSQL-Datenbank werden mit **Docker Compose** in Containern ausgeführt.
+Backend und PostgreSQL-Datenbank werden mit **Docker Compose** in Containern ausgeführt.
 Dadurch kann die Anwendung reproduzierbar bereitgestellt werden.
 
 Für das **Monitoring** wird der Spring-Boot-Actuator verwendet.
