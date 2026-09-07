@@ -10,35 +10,90 @@
 ## SDLC - Software Development Life Cycle
 
 Der **SDLC (Software Development Life Cycle)** beschreibt den gesamten Lebenszyklus einer Software.
-Er unterteilt die Softwareentwicklung in verschiedene, voneinander abhängige Phasen.
+Er unterteilt die Softwareentwicklung in verschiedene, wiederholbare, voneinander abhängige Phasen.
 
 Je nach SDLC-Modell können die Phasen nacheinander, parallel oder wiederholt durchgeführt werden.
 
 ### Die 7 Phasen:
 
-#### 1. Planung – Ziele, Umfang, Zeit, Kosten und Ressourcen festlegen
-#### 2. Analyse – Anforderungen der Benutzer/Kunden erfassen und analysieren
-#### 3. Entwurf (Design) – Architektur, Datenbanken, Benutzeroberfläche etc. planen
-#### 4. Codierung / Entwicklung – Software wird programmiert
-#### 5. Testen – Fehler finden und prüfen, ob die Anforderungen erfüllt sind
-#### 6. Bereitstellung (Deployment) – Software wird veröffentlicht bzw. in die Produktionsumgebung gebracht
-#### 7. Wartung – Fehler beheben, Updates durchführen und Software weiterentwickeln
+#### 1. Planung
+- Ziele und Umfang des Projekts festlegen
+- Zeit, Kosten und benötigte Ressourcen planen
+- Risiken einschätzen
 
-### Anwendung und Steuerung des SDLC
+#### 2. Analyse
+- Anforderungen der Benutzer/Kunden erfassen
+- Anforderungen analysieren und dokumentieren
+- Festlegen, was die Software können muss
 
-- Der SDLC dient als strukturierter Rahmen für die Planung, Entwicklung, Bereitstellung und Wartung von Software.
-- Die einzelnen Phasen werden je nach SDLC-Modell nacheinander oder iterativ durchlaufen.
-- Fortschritt und Ergebnisse werden während des Projekts überprüft und bei Bedarf angepasst.
+#### 3. Entwurf / Design
+- Technische Lösung planen
+- Architektur, Datenbanken und Benutzeroberfläche entwerfen
+- Grundlage für die Entwicklung erstellen
+
+#### 4. Codierung / Entwicklung
+- Software wird programmiert
+- Anforderungen und Designs werden technisch umgesetzt
+
+#### 5. Testen
+- Software auf Fehler überprüfen
+- Prüfen, ob die Anforderungen erfüllt werden
+- Qualität und Funktionalität sicherstellen
+
+#### 6. Bereitstellung / Deployment
+- Fertige Software wird veröffentlicht
+- Software wird in die Produktionsumgebung gebracht
+- Benutzer können das System verwenden
+
+#### 7. Wartung
+- Fehler nach der Veröffentlichung beheben
+- Updates und Verbesserungen durchführen
+- Software an neue Anforderungen anpassen
+
+#### Anwendung und Steuerung des SDLC
+
+Der SDLC wird von Entwicklungsteams verwendet, um Software strukturiert zu planen,
+zu entwickeln, bereitzustellen und zu warten.
+
+Während des Projekts werden unter anderem folgende Faktoren überwacht:
+
+- Anforderungen
+- Fortschritt
+- Zeit
+- Kosten
+- Qualität
+- Risiken
+- Ressourcen
+
+Projektleitung, Entwickler, Tester und weitere Beteiligte arbeiten dabei zusammen. Je nach Vorgehensmodell werden die SDLC-Phasen unterschiedlich durchgeführt:
+
+**Wasserfallmodell:**
+- Die Phasen werden nacheinander durchgeführt.
+- Eine Phase wird normalerweise abgeschlossen, bevor die nächste beginnt.
+- Änderungen im späteren Verlauf sind schwieriger umzusetzen.
+- Eignet sich besonders, wenn die Anforderungen von Anfang an klar sind.
+
+
+![img.png](img.png)
+
+**Agiles Modell:**
+- Die Entwicklung erfolgt in kurzen, wiederholten Zyklen (Iterationen).
+- Software wird schrittweise entwickelt und verbessert.
+- Feedback und Änderungen können laufend berücksichtigt werden.
+- Eignet sich besonders, wenn sich Anforderungen während des Projekts verändern können.
+
+![img_1.png](img_1.png)
 
 ### Vorteile von SDLC
 
-- bessere software
-- verbesserte produktivität
-- minimiertes risiko
-- verbesserte projekttransparenz
-- bessere zusammenarbeit
-- effizienteres ressourcenmanagement
-- verbesserte kundenzufriedenheit
+- bessere Softwarequalität
+- höhere Produktivität
+- geringeres Projektrisiko
+- bessere Projekttransparenz
+- bessere Zusammenarbeit
+- effizienteres Ressourcenmanagement
+- bessere Planbarkeit von Zeit und Kosten
+- höhere Kundenzufriedenheit
 
 ## DevOps Lifecycle
 
@@ -46,25 +101,37 @@ DevOps verbindet **Softwareentwicklung (Development)** und **IT-Betrieb (Operati
 
 Ziel ist es, Entwicklung, Tests und Bereitstellung durch **Zusammenarbeit und Automatisierung** schneller und zuverlässiger zu machen.
 
+Grundprinzipien:
+- Zusammenarbeit zwischen Dev und Ops
+- Automatisierung
+- Continuous Integration (CI)
+- Continuous Delivery/Deployment (CD)
+
 Kernphasen:
 
 1. **Planung**
    - Anforderungen sammeln und Aufgaben planen
 
+
 2. **Code**
    - Software entwickeln und Code verwalten
+
 
 3. **Build / Erstellung**
    - Code wird zu einer ausführbaren Anwendung zusammengebaut
 
+
 4. **Test**
    - Software automatisiert und manuell testen
 
+
 5. **Release**
-   - Eine fertige Version für die Veröffentlichung vorbereiten
+   - Eine fertige Version für die Veröffentlichung vorbereiten  
+
 
 6. **Bereitstellung / Deployment**
    - Software in die Produktionsumgebung bringen
+
 
 7. **Überwachung / Monitoring**
    - Software im Betrieb überwachen
@@ -115,7 +182,9 @@ Ein **MVP (Minimum Viable Product)** ist die einfachste funktionsfähige Version
 eines Produkts, die bereits einen Nutzen für Benutzer bietet.
 
 Es enthält nur die wichtigsten Funktionen, die notwendig sind, um das Produkt
-zu verwenden und zu testen.
+zu verwenden und zu testen. (Minimum)  
+Es ist trotzdem bereits funktionsfähig und bietet den Benutzern einen echten Nutzen. (Viable)  
+Weitere Funktionen werden erst später anhand von Feedback ergänzt.
 
 ### Merkmale
 - nur die wichtigsten Kernfunktionen
@@ -139,3 +208,30 @@ Dadurch kann das Produkt **schrittweise und iterativ verbessert** werden.
 - unnötige Entwicklung vermeiden
 - Anforderungen besser an die Benutzer anpassen
 - schnelle und kontinuierliche Verbesserung
+
+![img_2.png](img_2.png)
+
+
+## Transfer
+
+In meinem früheren Projekt bei Swisscom konnte ich vor allem den **DevOps Lifecycle** in der Praxis wiedererkennen. Ich war dort hauptsächlich im Testing tätig und arbeitete unter anderem mit automatisierten Tests.
+
+Die **Testphase** spielte dabei eine wichtige Rolle. Durch automatisierte Tests konnten Funktionen der Software regelmässig überprüft und Fehler frühzeitig erkannt werden. Das zeigt auch einen wichtigen Unterschied zu einem rein traditionellen Entwicklungsansatz, da bei DevOps **Automatisierung und kontinuierliches Testen** eine grössere Rolle spielen.
+
+Eine mögliche Verbesserung wäre, noch mehr Tests zu automatisieren und stärker in den Entwicklungsprozess zu integrieren. Dadurch könnten Fehler noch früher erkannt und die Software schneller und zuverlässiger für ein Release vorbereitet werden.
+
+## KI Nachweis
+
+Prompt: "Kannst du meine Sätze besser formulieren und die Grammatik korrigieren?"  
+KI-Hinweis: Die KI hat meine selbst verfassten Sätze sprachlich überarbeitet und grammatikalische Fehler korrigiert.  
+Korrigierte Stelle: Abschnitt "Transfer"  
+Eigene Schlussfolgerung: Der überarbeitete Abschnitt ist gut formuliert und verständlich.
+
+
+## Quellen
+
+https://www.ibm.com/de-de/think/topics/sdlc  
+https://aws.amazon.com/de/what-is/sdlc/  
+https://www.ibm.com/de-de/think/topics/devops-lifecycle  
+https://asana.com/de/resources/minimum-viable-product  
+https://t2informatik.de/wissen-kompakt/minimum-viable-product/
