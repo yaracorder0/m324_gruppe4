@@ -74,7 +74,6 @@ Projektleitung, Entwickler, Tester und weitere Beteiligte arbeiten dabei zusamme
 - Eignet sich besonders, wenn die Anforderungen von Anfang an klar sind.
 
 
-![img.png](img.png)
 
 **Agiles Modell:**
 - Die Entwicklung erfolgt in kurzen, wiederholten Zyklen (Iterationen).
@@ -82,18 +81,25 @@ Projektleitung, Entwickler, Tester und weitere Beteiligte arbeiten dabei zusamme
 - Feedback und Änderungen können laufend berücksichtigt werden.
 - Eignet sich besonders, wenn sich Anforderungen während des Projekts verändern können.
 
-![img_1.png](img_1.png)
 
 ### Vorteile von SDLC
 
-- bessere Softwarequalität
-- höhere Produktivität
-- geringeres Projektrisiko
-- bessere Projekttransparenz
-- bessere Zusammenarbeit
-- effizienteres Ressourcenmanagement
-- bessere Planbarkeit von Zeit und Kosten
-- höhere Kundenzufriedenheit
+- **Bessere Softwarequalität:** Durch festgelegte Entwicklungs- und Testphasen wird die Software regelmässig überprüft.
+- **Geringeres Projektrisiko:** Probleme und falsche Anforderungen können früh erkannt werden, bevor sie später hohe Kosten verursachen.
+- **Bessere Projekttransparenz:** Durch die klaren Phasen ist ersichtlich, in welchem Stand sich das Projekt befindet.
+- **Bessere Zusammenarbeit:** Aufgaben und Verantwortlichkeiten können den verschiedenen Phasen klar zugeordnet werden.
+- **Effizienteres Ressourcenmanagement:** Zeit, Kosten und benötigte Ressourcen können frühzeitig geplant werden.
+- **Höhere Kundenzufriedenheit:** Anforderungen werden bereits in der Analyse berücksichtigt und die fertige Software wird auf diese geprüft.
+
+
+Die Ergebnisse einer Phase bilden die Grundlage für die nächste Phase.
+Beispielsweise werden die Anforderungen aus der Analyse an die Entwicklung weitergegeben.
+Nach der Entwicklung wird die Software getestet und anschliessend für die Bereitstellung vorbereitet.
+
+Dadurch begleitet der SDLC die Software von der ersten Planung bis zum Betrieb und zur Wartung.
+
+
+![img_4.png](img_4.png)
 
 ## DevOps Lifecycle
 
@@ -103,9 +109,11 @@ Ziel ist es, Entwicklung, Tests und Bereitstellung durch **Zusammenarbeit und Au
 
 Grundprinzipien:
 - Zusammenarbeit zwischen Dev und Ops
-- Automatisierung
-- Continuous Integration (CI)
-- Continuous Delivery/Deployment (CD)
+- Automatisierung von wiederholbaren Abläufen
+- Continuous Integration und Continuous Delivery/Deployment (CI/CD)
+- automatisierte Tests
+- Infrastructure as Code (IaC)
+- kontinuierliches Monitoring und Feedback
 
 Kernphasen:
 
@@ -133,7 +141,12 @@ Kernphasen:
    - Software in die Produktionsumgebung bringen
 
 
-7. **Überwachung / Monitoring**
+7. **Operate / Betrieb**
+   - Software und Infrastruktur im laufenden Betrieb verwalten
+   - Stabilität und Verfügbarkeit der Anwendung sicherstellen
+
+
+8**Überwachung / Monitoring**
    - Software im Betrieb überwachen
    - Fehler und Feedback erkennen
 
@@ -142,6 +155,11 @@ Erkenntnisse aus dem Monitoring fliessen wieder in die Planung ein.
 
 Traditionell sind Entwicklung und Betrieb stärker voneinander getrennt.
 DevOps versucht diese Trennung aufzuheben.
+DevOps ist nicht nur eine Sammlung von Tools, sondern verändert auch die Zusammenarbeit.
+Entwicklung und Betrieb arbeiten gemeinsam an der Software und übernehmen gemeinsam Verantwortung.
+Dadurch werden getrennte Teams bzw. Silos reduziert.
+
+![img_3.png](img_3.png)
 
 Ziele von DevOps:
 - schnellere und häufigere Releases
@@ -151,7 +169,14 @@ Ziele von DevOps:
 - schnellere Reaktion auf Probleme und Feedback
 - zuverlässigere Software
 
+
+
 ## Vergleich SDLC vs. DevOps Lifecycle
+
+SDLC und DevOps schliessen sich nicht gegenseitig aus.
+DevOps kann als moderne bzw. agile Umsetzung des Software-Lebenszyklus betrachtet werden.
+Auch bei DevOps wird geplant, entwickelt, getestet und bereitgestellt, jedoch in kürzeren,
+kontinuierlichen und stärker automatisierten Zyklen.
 
 | SDLC | DevOps |
 |---|---|
@@ -212,20 +237,66 @@ Dadurch kann das Produkt **schrittweise und iterativ verbessert** werden.
 ![img_2.png](img_2.png)
 
 
-## Transfer
+## Anwendung in unserem Projekt
 
-In meinem früheren Projekt bei Swisscom konnte ich vor allem den **DevOps Lifecycle** in der Praxis wiedererkennen. Ich war dort hauptsächlich im Testing tätig und arbeitete unter anderem mit automatisierten Tests.
+Die Konzepte SDLC, DevOps und MVP lassen sich auch auf unser Ticket-System übertragen.
+Viele der einzelnen Phasen und Prinzipien sind in unserem Entwicklungsprozess direkt erkennbar.
 
-Die **Testphase** spielte dabei eine wichtige Rolle. Durch automatisierte Tests konnten Funktionen der Software regelmässig überprüft und Fehler frühzeitig erkannt werden. Das zeigt auch einen wichtigen Unterschied zu einem rein traditionellen Entwicklungsansatz, da bei DevOps **Automatisierung und kontinuierliches Testen** eine grössere Rolle spielen.
+### 1. SDLC im Ticket-System
 
-Eine mögliche Verbesserung wäre, noch mehr Tests zu automatisieren und stärker in den Entwicklungsprozess zu integrieren. Dadurch könnten Fehler noch früher erkannt und die Software schneller und zuverlässiger für ein Release vorbereitet werden.
+Auch bei unserem Ticket-System durchlaufen wir verschiedene Phasen des SDLC.
+
+- **Planung und Analyse:** Anforderungen und Funktionen des Ticket-Systems werden festgelegt und als Aufgaben geplant.
+- **Entwicklung:** Backend und Frontend werden entwickelt und die PostgreSQL-Datenbank angebunden.
+- **Test:** Die implementierten Funktionen werden getestet.
+- **Bereitstellung:** Die Anwendung wird mit Docker Compose in Containern bereitgestellt.
+- **Wartung:** Fehler können behoben und neue Funktionen schrittweise ergänzt werden.
+
+Unser Vorgehen entspricht dabei eher einem **iterativen Ansatz**, da das System nicht einmal vollständig entwickelt und danach veröffentlicht wird, sondern schrittweise erweitert und verbessert wird.
+
+
+### 2. DevOps im Ticket-System
+
+Auch verschiedene DevOps-Praktiken werden in unserem Projekt eingesetzt.
+
+Backend, Frontend und PostgreSQL-Datenbank werden mit **Docker Compose** in Containern ausgeführt.
+Dadurch kann die Anwendung reproduzierbar bereitgestellt werden.
+
+Für das **Monitoring** wird der Spring-Boot-Actuator verwendet.
+Über den `/actuator/health`-Endpunkt kann überprüft werden, ob die Anwendung und die Verbindung zur Datenbank funktionieren.
+
+Dadurch sind neben der Entwicklung auch **Deployment, Betrieb und Monitoring** Teil unseres Entwicklungsprozesses.
+
+
+### 3. SDLC und DevOps im Projekt
+
+Der SDLC beschreibt die verschiedenen Schritte, die wir bei der Entwicklung unseres Ticket-Systems durchlaufen.
+
+DevOps ergänzt diesen Prozess durch Praktiken, welche Entwicklung und Betrieb stärker miteinander verbinden.
+Docker Compose unterstützt beispielsweise die Bereitstellung und Spring Boot Actuator die Überwachung der laufenden Anwendung.
+
+Dadurch endet die Arbeit nicht nach der Entwicklung und dem Testen, sondern umfasst auch die Bereitstellung und den anschliessenden Betrieb.
+
+
+### 4. MVP unseres Ticket-Systems
+
+Das MVP unseres Ticket-Systems besteht aus den wichtigsten Funktionen, die notwendig sind,
+damit das System bereits sinnvoll genutzt werden kann.
+
+Anstatt von Anfang an alle geplanten Funktionen umzusetzen, wird zuerst eine funktionsfähige
+Grundversion entwickelt. Zusätzliche Funktionen können anschliessend schrittweise ergänzt und
+anhand von Tests und Feedback verbessert werden.
+
+Dadurch können wir früh überprüfen, ob die Grundfunktionen des Ticket-Systems funktionieren,
+bevor weitere Features entwickelt werden.
+
 
 ## KI Nachweis
 
-Prompt: "Kannst du meine Sätze besser formulieren und die Grammatik korrigieren?"  
-KI-Hinweis: Die KI hat meine selbst verfassten Sätze sprachlich überarbeitet und grammatikalische Fehler korrigiert.  
-Korrigierte Stelle: Abschnitt "Transfer"  
-Eigene Schlussfolgerung: Der überarbeitete Abschnitt ist gut formuliert und verständlich.
+Prompt: "Kannst du meine Notizen zu unserem Projekt meinen Themen zuordnen und die Sätze besser formulieren?"  
+KI-Hinweis: Die KI hat meine Informationen zum Projekt strukturiert, den passenden Themen zugeordnet und sprachlich überarbeitet.  
+Bearbeitete Stelle: Abschnitt "Anwendung in unserem Projekt"  
+Eigene Schlussfolgerung: Der Abschnitt ist übersichtlich aufgebaut und die Zusammenhänge zwischen der Theorie und unserem Projekt sind verständlich dargestellt.
 
 
 ## Quellen
