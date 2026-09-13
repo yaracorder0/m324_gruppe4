@@ -1,0 +1,47 @@
+# Startet das Gesamtsystem aus den publizierten Images der GitHub Container Registry.
+# Dient als Test-/Abnahmeumgebung und als Grundlage fuer das Deployment in P4.
+#
+# Aufruf (aus Code/Ticket_System):
+#   IMAGE_TAG=1.0.0 docker compose -f docker-compose.release.yml up -d
+#
+# Ohne IMAGE_TAG wird "latest" verwendet. Fuer reproduzierbare Deployments
+# immer einen festen Tag (SemVer oder sha-<commit>) angeben.
+name: ticket-system-release
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ticket_user
+      POSTGRES_PASSWORD: ticket_password
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP-Port ist erst nach dem Init-Skript offen
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "ticket_user"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  employee-service:
+    image: ${IMAGE_REGISTRY:-ghcr.io/yaracorder0/m324_gruppe4}/employee-service:${IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/employee_db
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ticket-service:
+    image: ${IMAGE_REGISTRY:-ghcr.io/yaracorder0/m324_gruppe4}/ticket-service:${IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ticket_db
+      EMPLOYEE_SERVICE_URL: http://employee-service:8081/api/employees
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      employee-service:
+        condition: service_started

@@ -1,0 +1,3 @@
+# Nur das fertige JAR gehoert in den Build-Kontext
+*
+!target/ticket-service-*.jar
