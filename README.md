@@ -43,24 +43,30 @@ docker compose up -d
 > [!NOTE]
 > Die Datenbank läuft auf Port **5433** und initialisiert automatisch die Tabellen sowie Testdaten über das Skript `init-scripts/01-init.sql`.
 
-### 2. Tests ausführen (Unit- vs. Integrationstests)
-Die Testsuite ist klar in isolierte Unit-Tests und datenbankgestützte Integrationstests unterteilt:
+### 2. Tests ausführen (Unit-, Integrations- und Systemtests)
+Die Testsuite ist in drei Stufen unterteilt (Details siehe [P3 Dokumentation](Dokumentation/P3_CI_Variantenvergleich.md#teststufen)). Alle Befehle werden in `Code/Ticket_System` ausgeführt:
 
-* **Unit-Tests (100% Offline / ohne laufende Datenbank):**
+* **Unit-Tests (ohne laufende Datenbank, Maven Surefire):**
   - Enthalten in den Testklassen `EmployeeControllerTest`, `EmployeeServiceTest`, `TicketControllerTest` und `TicketServiceTest`.
-  - Nutzen **Mockito** und **MockMvc** im Standalone-Setup. Sie laufen blitzschnell und sind völlig unabhängig von externen Systemen, Docker oder dem Netzwerk.
-  - Können jederzeit ohne Vorbedingungen ausgeführt werden:
-    ```bash
-    mvn test -Dtest=*ControllerTest,*ServiceTest
-    ```
-
-* **Integrationstests (Benötigen laufende PostgreSQL-Instanz):**
-  - Enthalten in `EmployeeIntegrationTest` und `TicketIntegrationTest`.
-  - Fahren den realen Spring-Boot-Kontext hoch und testen die Persistierung in der echten PostgreSQL-Datenbank.
-  - **Wichtig:** Diese Tests setzen voraus, dass die Docker-Datenbank auf Port 5433 läuft (`docker compose up -d`).
-  - Ausführung aller Tests (inklusive Integrationstests):
+  - Nutzen **Mockito** und **MockMvc** im Standalone-Setup und sind unabhängig von externen Systemen, Docker oder dem Netzwerk.
     ```bash
     mvn test
+    ```
+
+* **Integrationstests (benötigen laufende PostgreSQL-Instanz, Maven Failsafe):**
+  - Enthalten in `EmployeeIntegrationTest`, `TicketIntegrationTest` und den `*ApplicationTests`.
+  - Fahren den realen Spring-Boot-Kontext hoch und testen die Persistierung in der echten PostgreSQL-Datenbank.
+  - **Wichtig:** Die Docker-Datenbank muss auf Port 5433 laufen (`docker compose up -d`).
+    ```bash
+    mvn verify                  # Unit- und Integrationstests
+    mvn verify -DskipUTs=true   # nur Integrationstests
+    ```
+
+* **Systemtests (beide Services laufen als JARs):**
+  - Enthalten in [system-tests/system-tests.http](Code/Ticket_System/system-tests/system-tests.http), testen das Zusammenspiel beider Services.
+  - Voraussetzung: frisch initialisierte Datenbank und gebaute JARs (`mvn package`), benötigt Linux/Git Bash und Docker.
+    ```bash
+    bash system-tests/run-system-tests.sh
     ```
 
 ### 3. Microservices lokal starten
@@ -69,6 +75,15 @@ Die Testsuite ist klar in isolierte Unit-Tests und datenbankgestützte Integrati
 
 ### 4. Manuelle Testdurchführung
 In der Datei [requests.http](Code/Ticket_System/requests.http) sind 13 vorkonfigurierte HTTP-Aufrufe (Happy- und Sad-Paths) enthalten, die direkt über den IntelliJ HTTP Client per Klick ausgeführt werden können.
+
+### 5. CI-Pipeline und Docker-Images
+* Die CI-Pipeline ([CI.yml](.github/workflows/CI.yml)) baut und testet bei jedem Push auf `feature/**` und `main` sowie bei Pull Requests auf `main`.
+* Sind alle Tests erfolgreich, werden auf `main` und bei Release-Tags (`v*`) Docker-Images in die GitHub Container Registry publiziert (Details siehe [P3b Dokumentation](Dokumentation/P3b_Artefakt_Repository.md)).
+* Gesamtsystem aus den publizierten Images starten:
+  ```bash
+  cd Code/Ticket_System
+  IMAGE_TAG=latest docker compose -f docker-compose.release.yml up -d
+  ```
 
 ---
 
