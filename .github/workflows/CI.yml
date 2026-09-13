@@ -4,9 +4,12 @@ name: CI (V2)
 # Bei jeder Aenderung werden immer beide Services gebaut und getestet.
 # Die Systemtests laufen danach in einem eigenen Job und verwenden die
 # JARs aus den Service-Jobs weiter (kein zweiter Build).
+# P3b: Sind alle Tests gruen, werden die Docker-Images gebaut und auf main
+# bzw. bei Release-Tags (v*) in die GitHub Container Registry publiziert.
 on:
   push:
     branches: [ "main", "feature/**" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -16,10 +19,11 @@ on:
         type: boolean
         default: true
 
-# Aeltere Laeufe auf demselben Branch abbrechen, wenn neu gepusht wird
+# Aeltere Laeufe auf demselben Branch abbrechen, wenn neu gepusht wird.
+# Auf main nicht abbrechen, damit jeder gemergte Commit ein Image erhaelt.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   employee-service:
@@ -224,4 +228,104 @@ jobs:
           path: |
             Code/Ticket_System/system-tests/reports/
             Code/Ticket_System/system-tests/logs/
+
+  # Stufe 4 (P3b): Docker-Image pro Service bauen und publizieren.
+  # Laeuft nur, wenn alle Tests erfolgreich waren. Gepusht wird nur auf main
+  # und bei Release-Tags, auf Feature-Branches und in PRs wird nur gebaut.
+  publish:
+    name: Publish ${{ matrix.service }}
+    needs: [ system-tests ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Least Privilege: nur dieser Job darf in die Registry schreiben
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [ employee-service, ticket-service ]
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Genau das JAR verwenden, das alle Teststufen bestanden hat
+      - name: Download ${{ matrix.service }} JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.service }}-jar-${{ github.sha }}
+          path: Code/Ticket_System/${{ matrix.service }}/target
+
+      # Image-Namen muessen kleingeschrieben sein
+      - name: Image-Namen bestimmen
+        run: echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_ENV"
+
+      # Tags: sha-<commit> immer, latest nur auf main, SemVer nur bei Release-Tags v*
+      - name: Tags und Labels erzeugen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: |
+            latest=false
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # GITHUB_TOKEN wird von GitHub pro Lauf erzeugt, es wird kein eigenes Secret benoetigt
+      - name: Login GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: Code/Ticket_System/${{ matrix.service }}
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Keine zusaetzlichen Attestation-Manifeste, damit die Registry nur die Images zeigt
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # Pipeline-Ausgabe: welches Artefakt wurde publiziert?
+      - name: Publiziertes Artefakt ausgeben
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Artefakt: ${{ matrix.service }}"
+            echo ""
+            if [ "$PUBLISH" = "true" ]; then
+              echo "**Status:** publiziert in die GitHub Container Registry"
+            else
+              echo "**Status:** nur gebaut, nicht publiziert (kein Push auf main oder Release-Tag)"
+            fi
+            echo ""
+            echo "| Eigenschaft | Wert |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE_NAME}\` |"
+            echo "| Tags | $(echo "$TAGS" | sed 's/.*://' | paste -sd ',' - | sed 's/,/, /g') |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Pipeline-Lauf | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
+            if [ "$PUBLISH" = "true" ]; then
+              echo ""
+              echo "\`docker pull $(echo "$TAGS" | head -n 1)\`"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
  
