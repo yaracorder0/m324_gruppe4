@@ -234,7 +234,3 @@ Diese Umgebung wurde lokal mit selbst gebauten Images getestet: Alle 10 Systemte
 Die Pipeline ist darauf vorbereitet, in P4 einen Deploy-Job mit `needs: publish` zu ergänzen, der die soeben publizierten Images in die Abnahmeumgebung ausrollt.
 
 ---
-
-## KI-Nachweis
-Der Artefakt-Review mit KI ist im [KI-Nachweis](KI_Nachweis.md#p3b-artefakt-repository) dokumentiert.
- 
