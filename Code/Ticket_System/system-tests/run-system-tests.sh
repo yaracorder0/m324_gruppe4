@@ -11,15 +11,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-EMPLOYEE_JAR=${EMPLOYEE_JAR:-$(ls employee-service/target/employee-service-*.jar | head -n 1)}
-TICKET_JAR=${TICKET_JAR:-$(ls ticket-service/target/ticket-service-*.jar | head -n 1)}
+EMPLOYEE_JAR=${EMPLOYEE_JAR:-$(find employee-service/target -maxdepth 1 -name 'employee-service-*.jar' | head -n 1)}
+TICKET_JAR=${TICKET_JAR:-$(find ticket-service/target -maxdepth 1 -name 'ticket-service-*.jar' | head -n 1)}
 IJHTTP_IMAGE=jetbrains/intellij-http-client:2026.2.2
 LOG_DIR=system-tests/logs
 mkdir -p "$LOG_DIR"
 
 wait_for() {
   local name=$1 url=$2
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     if curl -sf -o /dev/null "$url"; then
       echo "$name ist bereit ($url)"
       return 0
@@ -49,3 +49,4 @@ docker run --rm --network host \
   --env-file=http-client.env.json --env=ci \
   --report=reports --no-progress \
   system-tests.http
+ 

@@ -2,12 +2,19 @@ name: CI (V2)
 
 # V2: ein gemeinsamer Workflow mit einem Job pro Microservice.
 # Bei jeder Aenderung werden immer beide Services gebaut und getestet.
+# Die Systemtests laufen danach in einem eigenen Job und verwenden die
+# JARs aus den Service-Jobs weiter (kein zweiter Build).
 on:
   push:
     branches: [ "main", "feature/**" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      maven_cache:
+        description: "Maven-Cache verwenden (fuer Laufzeitvergleich deaktivierbar)"
+        type: boolean
+        default: true
 
 # Aeltere Laeufe auf demselben Branch abbrechen, wenn neu gepusht wird
 concurrency:
@@ -32,7 +39,12 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
+          # Bei manuellem Start mit maven_cache=false wird ohne Cache gebaut
+          cache: ${{ github.event.inputs.maven_cache != 'false' && 'maven' || '' }}
+
+      # Stufe 1: Kompilieren, Unit-Tests (ohne DB) und JAR erstellen
+      - name: Build & Unit-Tests
+        run: mvn -B -ntp -pl employee-service -am package
 
       - name: Start PostgreSQL
         run: docker compose up -d
@@ -40,7 +52,7 @@ jobs:
       # Postgres oeffnet den TCP-Port erst, nachdem das Init-Skript durchgelaufen ist
       - name: Wait for PostgreSQL
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
               exit 0
             fi
@@ -50,21 +62,34 @@ jobs:
           docker compose logs postgres
           exit 1
 
-      - name: Build & test (unit + integration)
-        run: mvn -B -pl employee-service -am verify
+      # Stufe 2: Integrationstests gegen PostgreSQL (Unit-Tests nicht nochmals ausfuehren)
+      - name: Integrationstests
+        run: mvn -B -ntp -pl employee-service -am verify -DskipUTs=true
+
+      - name: Test-Zusammenfassung
+        if: always()
+        run: >
+          python3 ci/test-summary.py "employee-service"
+          "Unit-Tests=employee-service/target/surefire-reports/TEST-*.xml"
+          "Integrationstests=employee-service/target/failsafe-reports/TEST-*.xml"
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: employee-service-test-reports
-          path: Code/Ticket_System/employee-service/target/surefire-reports/
+          path: |
+            Code/Ticket_System/employee-service/target/surefire-reports/
+            Code/Ticket_System/employee-service/target/failsafe-reports/
 
+      # Build-Ergebnis fuer P3b: JAR, eindeutig dem Commit zugeordnet
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: employee-service-jar
-          path: Code/Ticket_System/employee-service/target/*.jar
+          name: employee-service-jar-${{ github.sha }}
+          path: Code/Ticket_System/employee-service/target/employee-service-*.jar
+          if-no-files-found: error
+          retention-days: 14
 
   ticket-service:
     name: Build & Test ticket-service
@@ -83,7 +108,12 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
+          # Bei manuellem Start mit maven_cache=false wird ohne Cache gebaut
+          cache: ${{ github.event.inputs.maven_cache != 'false' && 'maven' || '' }}
+
+      # Stufe 1: Kompilieren, Unit-Tests (ohne DB) und JAR erstellen
+      - name: Build & Unit-Tests
+        run: mvn -B -ntp -pl ticket-service -am package
 
       - name: Start PostgreSQL
         run: docker compose up -d
@@ -91,7 +121,7 @@ jobs:
       # Postgres oeffnet den TCP-Port erst, nachdem das Init-Skript durchgelaufen ist
       - name: Wait for PostgreSQL
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
               exit 0
             fi
@@ -101,19 +131,97 @@ jobs:
           docker compose logs postgres
           exit 1
 
-      # Der employee-service wird in den Integrationstests gemockt und muss nicht laufen
-      - name: Build & test (unit + integration)
-        run: mvn -B -pl ticket-service -am verify
+      # Stufe 2: Integrationstests gegen PostgreSQL (employee-service wird dort gemockt)
+      - name: Integrationstests
+        run: mvn -B -ntp -pl ticket-service -am verify -DskipUTs=true
+
+      - name: Test-Zusammenfassung
+        if: always()
+        run: >
+          python3 ci/test-summary.py "ticket-service"
+          "Unit-Tests=ticket-service/target/surefire-reports/TEST-*.xml"
+          "Integrationstests=ticket-service/target/failsafe-reports/TEST-*.xml"
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ticket-service-test-reports
-          path: Code/Ticket_System/ticket-service/target/surefire-reports/
+          path: |
+            Code/Ticket_System/ticket-service/target/surefire-reports/
+            Code/Ticket_System/ticket-service/target/failsafe-reports/
 
+      # Build-Ergebnis fuer P3b: JAR, eindeutig dem Commit zugeordnet
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: ticket-service-jar
-          path: Code/Ticket_System/ticket-service/target/*.jar
+          name: ticket-service-jar-${{ github.sha }}
+          path: Code/Ticket_System/ticket-service/target/ticket-service-*.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  # Stufe 3: Systemtests mit beiden Services, erst wenn beide Service-Jobs gruen sind
+  system-tests:
+    name: Systemtests (beide Services)
+    needs: [ employee-service, ticket-service ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Code/Ticket_System
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Nur Java-Runtime noetig, es wird nichts gebaut
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Die JARs aus den Service-Jobs dorthin legen, wo das Skript sie erwartet
+      - name: Download employee-service JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: employee-service-jar-${{ github.sha }}
+          path: Code/Ticket_System/employee-service/target
+
+      - name: Download ticket-service JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: ticket-service-jar-${{ github.sha }}
+          path: Code/Ticket_System/ticket-service/target
+
+      - name: Start PostgreSQL
+        run: docker compose up -d
+
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in $(seq 1 30); do
+            if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker compose logs postgres
+          exit 1
+
+      - name: Systemtests ausfuehren
+        run: bash system-tests/run-system-tests.sh
+
+      - name: Test-Zusammenfassung
+        if: always()
+        run: python3 ci/test-summary.py "Systemtests" "Systemtests=system-tests/reports/*.xml"
+
+      - name: Upload Systemtest-Reports und Service-Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-test-reports
+          path: |
+            Code/Ticket_System/system-tests/reports/
+            Code/Ticket_System/system-tests/logs/
+ 
