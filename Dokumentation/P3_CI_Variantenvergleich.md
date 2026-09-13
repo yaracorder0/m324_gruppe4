@@ -295,4 +295,6 @@ Die Vorteile von Variante 4 kommen erst bei grösseren Projekten, mehr Services 
 
 Sollte das Projekt in Zukunft wachsen (z. B. weitere Services oder deutlich längere Build-Zeiten), wäre ein Wechsel auf Variante 4 sinnvoll.
 
-> Eigene Schlussfolgerung nach Auswertung der Pipeline-Läufe: _TODO_
+### Gruppen Schlussfolgerung nach Auswertung der Pipeline-Läufe:
+
+Wir haben uns für V2 entschieden, da die Laufzeit im Vergleich zu V4 deutlich kürzer ist. Ein weiteres Kriterium war der Implementierungs- und Anpassungsaufwand der Pipelines, der bei V2 wesentlich geringer ausfällt. Für den Rahmen unseres Schulprojekts bietet V2 somit die optimal passende Lösung.
