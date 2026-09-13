@@ -1,0 +1,77 @@
+name: Systemtests (V4)
+
+# V4: Systemtests brauchen beide Services gleichzeitig und passen deshalb in
+# keinen der Service-Workflows. Sie laufen in einem eigenen Workflow, der bei
+# jeder Aenderung am Code ausgeloest wird und beide JARs selbst neu bauen muss
+# (Artefakte aus anderen Workflows sind nicht direkt verfuegbar).
+on:
+  push:
+    branches: [ "main", "feature/**" ]
+    paths:
+      - "Code/Ticket_System/**"
+      - ".github/workflows/system-tests.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "Code/Ticket_System/**"
+      - ".github/workflows/system-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: system-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  system-tests:
+    name: Systemtests (beide Services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Code/Ticket_System
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Tests wurden bereits in den Service-Workflows ausgefuehrt
+      - name: Build beide Services (ohne Tests)
+        run: mvn -B -ntp package -DskipUTs=true
+
+      - name: Start PostgreSQL
+        run: docker compose up -d
+
+      - name: Wait for PostgreSQL
+        run: |
+          for _ in $(seq 1 30); do
+            if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker compose logs postgres
+          exit 1
+
+      - name: Systemtests ausfuehren
+        run: bash system-tests/run-system-tests.sh
+
+      - name: Test-Zusammenfassung
+        if: always()
+        run: python3 ci/test-summary.py "Systemtests" "Systemtests=system-tests/reports/*.xml"
+
+      - name: Upload Systemtest-Reports und Service-Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-test-reports
+          path: |
+            Code/Ticket_System/system-tests/reports/
+            Code/Ticket_System/system-tests/logs/

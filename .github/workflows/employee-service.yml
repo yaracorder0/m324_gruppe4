@@ -10,6 +10,7 @@ on:
       - "Code/Ticket_System/pom.xml"
       - "Code/Ticket_System/docker-compose.yml"
       - "Code/Ticket_System/init-scripts/**"
+      - "Code/Ticket_System/ci/**"
       - ".github/workflows/employee-service.yml"
   pull_request:
     branches: [ "main" ]
@@ -18,8 +19,14 @@ on:
       - "Code/Ticket_System/pom.xml"
       - "Code/Ticket_System/docker-compose.yml"
       - "Code/Ticket_System/init-scripts/**"
+      - "Code/Ticket_System/ci/**"
       - ".github/workflows/employee-service.yml"
   workflow_dispatch:
+    inputs:
+      maven_cache:
+        description: "Maven-Cache verwenden (fuer Laufzeitvergleich deaktivierbar)"
+        type: boolean
+        default: true
 
 # Aeltere Laeufe auf demselben Branch abbrechen, wenn neu gepusht wird
 concurrency:
@@ -44,7 +51,12 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
+          # Bei manuellem Start mit maven_cache=false wird ohne Cache gebaut
+          cache: ${{ github.event.inputs.maven_cache != 'false' && 'maven' || '' }}
+
+      # Stufe 1: Kompilieren, Unit-Tests (ohne DB) und JAR erstellen
+      - name: Build & Unit-Tests
+        run: mvn -B -ntp -pl employee-service -am package
 
       - name: Start PostgreSQL
         run: docker compose up -d
@@ -52,7 +64,7 @@ jobs:
       # Postgres oeffnet den TCP-Port erst, nachdem das Init-Skript durchgelaufen ist
       - name: Wait for PostgreSQL
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
               exit 0
             fi
@@ -62,18 +74,31 @@ jobs:
           docker compose logs postgres
           exit 1
 
-      - name: Build & test (unit + integration)
-        run: mvn -B -pl employee-service -am verify
+      # Stufe 2: Integrationstests gegen PostgreSQL (Unit-Tests nicht nochmals ausfuehren)
+      - name: Integrationstests
+        run: mvn -B -ntp -pl employee-service -am verify -DskipUTs=true
+
+      - name: Test-Zusammenfassung
+        if: always()
+        run: >
+          python3 ci/test-summary.py "employee-service"
+          "Unit-Tests=employee-service/target/surefire-reports/TEST-*.xml"
+          "Integrationstests=employee-service/target/failsafe-reports/TEST-*.xml"
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: employee-service-test-reports
-          path: Code/Ticket_System/employee-service/target/surefire-reports/
+          path: |
+            Code/Ticket_System/employee-service/target/surefire-reports/
+            Code/Ticket_System/employee-service/target/failsafe-reports/
 
+      # Build-Ergebnis fuer P3b: JAR, eindeutig dem Commit zugeordnet
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
-          name: employee-service-jar
-          path: Code/Ticket_System/employee-service/target/*.jar
+          name: employee-service-jar-${{ github.sha }}
+          path: Code/Ticket_System/employee-service/target/employee-service-*.jar
+          if-no-files-found: error
+          retention-days: 14
