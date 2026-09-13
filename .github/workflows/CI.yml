@@ -1,0 +1,119 @@
+name: CI (V2)
+
+# V2: ein gemeinsamer Workflow mit einem Job pro Microservice.
+# Bei jeder Aenderung werden immer beide Services gebaut und getestet.
+on:
+  push:
+    branches: [ "main", "feature/**" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# Aeltere Laeufe auf demselben Branch abbrechen, wenn neu gepusht wird
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  employee-service:
+    name: Build & Test employee-service
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Code/Ticket_System
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start PostgreSQL
+        run: docker compose up -d
+
+      # Postgres oeffnet den TCP-Port erst, nachdem das Init-Skript durchgelaufen ist
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker compose logs postgres
+          exit 1
+
+      - name: Build & test (unit + integration)
+        run: mvn -B -pl employee-service -am verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: employee-service-test-reports
+          path: Code/Ticket_System/employee-service/target/surefire-reports/
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: employee-service-jar
+          path: Code/Ticket_System/employee-service/target/*.jar
+
+  ticket-service:
+    name: Build & Test ticket-service
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Code/Ticket_System
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start PostgreSQL
+        run: docker compose up -d
+
+      # Postgres oeffnet den TCP-Port erst, nachdem das Init-Skript durchgelaufen ist
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec ticket_system_db pg_isready -h 127.0.0.1 -U ticket_user; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker compose logs postgres
+          exit 1
+
+      # Der employee-service wird in den Integrationstests gemockt und muss nicht laufen
+      - name: Build & test (unit + integration)
+        run: mvn -B -pl ticket-service -am verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticket-service-test-reports
+          path: Code/Ticket_System/ticket-service/target/surefire-reports/
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticket-service-jar
+          path: Code/Ticket_System/ticket-service/target/*.jar
