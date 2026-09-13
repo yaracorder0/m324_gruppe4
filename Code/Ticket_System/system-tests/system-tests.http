@@ -1,0 +1,194 @@
+# ======================================================================
+# Systemtests (IntelliJ HTTP Client / ijhttp CLI)
+# ======================================================================
+# Testet das Gesamtsystem: beide Microservices laufen als echte JARs
+# gegen die PostgreSQL-Datenbank. Im Gegensatz zu den Integrationstests
+# wird der employee-service hier NICHT gemockt.
+#
+# Voraussetzung: DB (docker compose), employee-service (8081) und
+# ticket-service (8082) laufen. Die Tests gehen von einer frisch
+# initialisierten Datenbank aus (init-scripts/01-init.sql).
+#
+# Lokal in IntelliJ: Environment "local" auswaehlen und ausfuehren.
+# In der CI: system-tests/run-system-tests.sh
+# ======================================================================
+
+
+### ST-01 Employee: Alle Mitarbeiter abrufen (Testdaten vorhanden)
+GET {{employeeUrl}}/api/employees
+Accept: application/json
+
+> {%
+    client.test("ST-01 Status 200", function () {
+        client.assert(response.status === 200, "Erwartet 200, erhalten " + response.status);
+    });
+    client.test("ST-01 Testdaten aus Init-Skript vorhanden", function () {
+        client.assert(response.body.length >= 6, "Erwartet mind. 6 Mitarbeiter, erhalten " + response.body.length);
+    });
+%}
+
+
+### ST-02 Employee: Neuen Mitarbeiter anlegen
+POST {{employeeUrl}}/api/employees
+Content-Type: application/json
+
+{
+  "firstName": "System",
+  "lastName": "Test",
+  "joinedDate": "2026-01-15",
+  "skillLevel": 3
+}
+
+> {%
+    client.test("ST-02 Status 201", function () {
+        client.assert(response.status === 201, "Erwartet 201, erhalten " + response.status);
+    });
+    client.test("ST-02 ID wurde vergeben", function () {
+        client.assert(response.body.id != null, "Keine ID in der Antwort");
+    });
+    client.global.set("newEmployeeId", response.body.id);
+%}
+
+
+### ST-03 Employee: Angelegten Mitarbeiter per ID abrufen (Persistenz)
+GET {{employeeUrl}}/api/employees/{{newEmployeeId}}
+Accept: application/json
+
+> {%
+    client.test("ST-03 Status 200", function () {
+        client.assert(response.status === 200, "Erwartet 200, erhalten " + response.status);
+    });
+    client.test("ST-03 Daten wurden korrekt gespeichert", function () {
+        client.assert(response.body.firstName === "System", "Falscher Vorname: " + response.body.firstName);
+        client.assert(response.body.skillLevel === 3, "Falscher Skill-Level: " + response.body.skillLevel);
+    });
+%}
+
+
+### ST-04 Employee Sad Path: Ungueltiger Skill-Level
+POST {{employeeUrl}}/api/employees
+Content-Type: application/json
+
+{
+  "firstName": "Peter",
+  "lastName": "Muster",
+  "joinedDate": "2022-06-01",
+  "skillLevel": 8
+}
+
+> {%
+    client.test("ST-04 Status 400", function () {
+        client.assert(response.status === 400, "Erwartet 400, erhalten " + response.status);
+    });
+    client.test("ST-04 Validierungsfehler fuer skillLevel", function () {
+        client.assert(response.body.validationErrors.skillLevel != null, "Kein Validierungsfehler fuer skillLevel");
+    });
+%}
+
+
+### ST-05 Employee Sad Path: Mitarbeiter existiert nicht
+GET {{employeeUrl}}/api/employees/999999
+Accept: application/json
+
+> {%
+    client.test("ST-05 Status 404", function () {
+        client.assert(response.status === 404, "Erwartet 404, erhalten " + response.status);
+    });
+%}
+
+
+### ST-06 Service-uebergreifend: Ticket fuer den in ST-02 angelegten Mitarbeiter
+# Der ticket-service prueft ueber REST beim employee-service, ob der Mitarbeiter existiert.
+# Dieser Test funktioniert nur, wenn beide Services wirklich miteinander kommunizieren.
+POST {{ticketUrl}}/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Systemtest Ticket",
+  "description": "Erstellt durch die CI-Systemtests",
+  "status": "OPEN",
+  "employeeId": {{newEmployeeId}}
+}
+
+> {%
+    client.test("ST-06 Status 201", function () {
+        client.assert(response.status === 201, "Erwartet 201, erhalten " + response.status + " - kommuniziert der ticket-service mit dem employee-service?");
+    });
+    client.test("ST-06 Ticket ist dem neuen Mitarbeiter zugewiesen", function () {
+        client.assert(response.body.employeeId == client.global.get("newEmployeeId"), "Falsche employeeId: " + response.body.employeeId);
+    });
+    client.global.set("newTicketId", response.body.id);
+%}
+
+
+### ST-07 Service-uebergreifend Sad Path: Mitarbeiter existiert nicht im employee-service
+POST {{ticketUrl}}/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket mit ungueltigem Mitarbeiter",
+  "status": "OPEN",
+  "employeeId": 999999
+}
+
+> {%
+    client.test("ST-07 Status 400", function () {
+        client.assert(response.status === 400, "Erwartet 400, erhalten " + response.status);
+    });
+    client.test("ST-07 Fehler 'Mitarbeiter nicht gefunden'", function () {
+        client.assert(response.body.error === "Mitarbeiter nicht gefunden", "Unerwarteter Fehler: " + response.body.error);
+    });
+%}
+
+
+### ST-08 Ticket Sad Path: Review-Datum bei Status OPEN
+POST {{ticketUrl}}/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket mit falschem Datum",
+  "status": "OPEN",
+  "reviewDate": "2026-09-01T10:00:00Z",
+  "employeeId": 1
+}
+
+> {%
+    client.test("ST-08 Status 400", function () {
+        client.assert(response.status === 400, "Erwartet 400, erhalten " + response.status);
+    });
+%}
+
+
+### ST-09 Ticket Sad Path: Mitarbeiter-Zuweisung fehlt
+POST {{ticketUrl}}/api/tickets
+Content-Type: application/json
+
+{
+  "title": "Ticket ohne Mitarbeiter",
+  "status": "OPEN"
+}
+
+> {%
+    client.test("ST-09 Status 400", function () {
+        client.assert(response.status === 400, "Erwartet 400, erhalten " + response.status);
+    });
+    client.test("ST-09 Validierungsfehler fuer employeeId", function () {
+        client.assert(response.body.validationErrors.employeeId != null, "Kein Validierungsfehler fuer employeeId");
+    });
+%}
+
+
+### ST-10 Ticket: Alle Tickets abrufen, enthaelt das neue Ticket
+GET {{ticketUrl}}/api/tickets
+Accept: application/json
+
+> {%
+    client.test("ST-10 Status 200", function () {
+        client.assert(response.status === 200, "Erwartet 200, erhalten " + response.status);
+    });
+    client.test("ST-10 Neues Ticket ist in der Liste", function () {
+        var id = client.global.get("newTicketId");
+        var found = response.body.some(function (t) { return t.id == id; });
+        client.assert(found, "Ticket mit ID " + id + " nicht in der Liste");
+    });
+%}
