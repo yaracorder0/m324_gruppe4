@@ -106,12 +106,24 @@ Für eine verlässliche Automatisierung unterscheiden wir klar zwischen **Develo
 | Eigenschaft | Development (Dev) | QA / Staging (Abnahme) | Production (Prod) |
 |---|---|---|---|
 | **Zweck** | Schnelle Entwicklung, lokales Debugging, Ausführen von Unit- & Integrationstests | Automatisierte Systemtests, Smoke Tests, Validierung des Release-Kandidaten | Echter Anwendungsbetrieb für Endbenutzer |
-| **Host / Plattform** | Lokale Entwickler-Laptops (Docker Desktop) | GitHub Actions Runner / Staging-Server (`docker-compose.release.yml`) | Kubernetes Cluster (EKS/K8s) oder AWS Fargate |
+| **Host / Plattform** | Lokale Entwickler-Laptops (Docker Desktop) | GitHub Actions Runner (`docker-compose.release.yml`) | GitHub Actions Runner (`docker-compose.release.yml`), identische Konfiguration wie Staging |
 | **Artefakt-Quelle** | Lokaler Build (`mvn package`, lokale Dockerfiles) | **Nur publizierte GHCR-Images** mit Commit-SHA (`sha-xxxx`) oder Release-Tag | **Nur freigegebene GHCR-Images** mit SemVer-Tag (z. B. `1.0.0`) |
-| **Datenbestand** | Lokale PostgreSQL mit Test-Seeds (`init-scripts/init.sql`) | Isoliertes PostgreSQL mit standardisierten Abnahme-Daten | Produktive PostgreSQL mit persistentem Storage (PVC / AWS RDS) |
+| **Datenbestand** | Lokale PostgreSQL mit Test-Seeds (`init-scripts/01-init.sql`) | Isoliertes PostgreSQL im Container, bei jedem Lauf frisch aus dem Init-Skript | Isoliertes PostgreSQL im Container (ohne persistentes Volume, siehe Restrisiken) |
 | **Trigger / Branch** | Jeder lokale Entwicklungsstand, Feature-Branches (`feature/**`) | **Vollautomatisch** nach erfolgreicher CI auf `main` oder bei Release-Tags | **Freigabebasiert** (Manual Approval / Git-Tag `v*`) |
-| **Logging & Actuator** | `DEBUG`-Level, vollständige Stacktraces, alle Actuator-Details offen | `INFO`-Level, Actuator Health aktiv für automatische Smoke Tests | `WARN`/`ERROR`-Level, Actuator-Endpunkte nur intern/abgesichert |
-| **Netzwerk & Ports** | Ports 8081, 8082, 5433 direkt auf `localhost` gemappt | Container im isolierten Docker-Netzwerk, Ports für Smoke Test gebunden | Nur Port 80/443 über Ingress/Load Balancer erreichbar |
+| **Logging & Actuator** | Spring-Boot-Standard, Actuator mit Details | Actuator Health mit Details, wird von Healthchecks und Smoke Tests ausgewertet | Aktuell identisch zu Staging. Für einen echten Produktivbetrieb müssten die Detail-Ausgaben eingeschränkt werden (siehe Abschnitt 4) |
+| **Netzwerk & Ports** | Ports 8081, 8082, 5433 direkt auf `localhost` gemappt | Container im isolierten Docker-Netzwerk, Ports 8081/8082 für den Smoke Test gebunden, Datenbank nicht nach aussen exponiert | Identisch zu Staging. In der Blue/Green-Variante zusätzlich ein nginx-Proxy auf 18081/18082 |
+
+### Abgrenzung: Was unsere "Production" ist und was nicht
+Unsere Production-Umgebung ist **dieselbe Docker-Compose-Umgebung wie Staging**, die auf einem GitHub Actions Runner ausgeführt wird. Sie unterscheidet sich von Staging nicht durch die Infrastruktur, sondern durch den **Prozess**:
+
+| | Staging | Production |
+|---|---|---|
+| Auslöser | Merge auf `main` | Release-Tag `v*` |
+| Artefakt | `sha-<commit>` (jeder getestete Commit) | SemVer-Tag (bewusst freigegebene Version) |
+| Freigabe | keine, vollautomatisch | manuelle Freigabe im GitHub Environment |
+| Ergebnis | Deployment-Nachweis | zusätzlich ein GitHub Release |
+
+Ein dauerhaft laufender Server (Cloud-VM, Kubernetes-Cluster) steht uns im Projektrahmen nicht zur Verfügung. Die Umgebung existiert deshalb nur für die Dauer des Pipeline-Laufs. Was das für den Realitätsgrad bedeutet, ist in den [Restrisiken](#10-restrisiken-und-gegenmassnahmen) beschrieben.
 
 ---
 
@@ -136,12 +148,16 @@ Wir halten uns strikt an die Grundsätze der **12-Factor App (Faktor III: Config
    - Authentifizierung an der GitHub Container Registry über das flüchtige, automatisch generierte `${{ secrets.GITHUB_TOKEN }}`.
    - Least Privilege: Lese- und Schreibrechte werden in der Pipeline nur dort vergeben, wo sie zwingend gebraucht werden (`packages: write` nur beim Publish).
 3. **Produktion:**
-   - In Kubernetes: Auslagerung in `kind: Secret` (`postgres-secret`), welches als Umgebungsvariable in den Pod injiziert wird ([`01-postgres.yaml`](../Code/Ticket_System/k8s/01-postgres.yaml)).
-   - In AWS: Verwaltung über den **AWS Secrets Manager** oder **AWS Systems Manager Parameter Store**.
+   - Aktuell werden die Datenbank-Zugangsdaten als Umgebungsvariablen im Compose-File gesetzt. Es handelt sich um reine Testwerte für einen Container ohne echte Daten.
+   - Für einen echten Produktivbetrieb: Ablage als **GitHub Actions Secret** und Injektion beim Deployment, in Kubernetes als `kind: Secret`, in AWS über den **Secrets Manager** bzw. **Parameter Store**.
 4. **Schutz sensibler Endpunkte:**
-   - `/actuator/health` liefert nur den aggregierten Status (`UP`/`DOWN`). Details zur Datenbankstruktur werden nicht unauthentifiziert nach aussen gegeben.
-5. **Passwort-Sicherheit:**
-   - Wie in [T4](../Theorie/T4_Theorie_Continuous_Deployment.md#wie-werden-passwörter-sicher-gespeichert) dargelegt, werden Passwörter ausschliesslich mit **BCrypt** und individuellen Salts gehasht.
+   - Über `management.endpoints.web.exposure.include=health,info` sind nur die beiden unkritischen Endpunkte aktiv. Endpunkte wie `env`, `beans` oder `heapdump`, die Konfiguration und Speicherinhalte preisgeben würden, sind **nicht** exponiert.
+   - `/actuator/health` liefert derzeit mit `show-details=always` zusätzlich den Zustand von Datenbank, Speicherplatz und SSL. Diese Details enthalten keine Zugangsdaten, sind aber für die automatische Auswertung in Healthcheck und Smoke Test nötig.
+   - **Für einen echten Produktivbetrieb** würden wir auf `management.endpoint.health.show-details=when_authorized` wechseln und die Actuator-Endpunkte nur im internen Netz erreichbar machen.
+5. **Passwort-Sicherheit (Ausblick, aktuell nicht umgesetzt):**
+   - Unser Ticket-System besitzt in Version 1.0 **keine Benutzerverwaltung und keine Authentifizierung**. Es werden deshalb keine Benutzerpasswörter gespeichert, und die API ist ohne Login erreichbar.
+   - Sobald eine Anmeldung ergänzt wird, setzen wir die in unserer Theoriearbeit ([T4](../Theorie/T4_Theorie_Continuous_Deployment.md)) erarbeitete Lösung um: Hashing mit **BCrypt** (individuelles Salt, anpassbarer Cost Factor) über Spring Security.
+   - Die einzigen Zugangsdaten im aktuellen System sind die Datenbank-Credentials, die über Umgebungsvariablen gesetzt werden (siehe Tabelle oben).
 
 ---
 
@@ -170,9 +186,10 @@ docker pull ghcr.io/yaracorder0/m324_gruppe4/ticket-service:sha-4a2b91c
 
 ## 6. Pipeline-Architektur: Trennung von CI und CD
 
-Auf Basis unseres Architektur-Reviews haben wir uns bewusst für eine **saubere Trennung in zwei Pipelines** entschieden:
+Auf Basis unseres Architektur-Reviews haben wir uns bewusst für eine **saubere Trennung der Pipelines** entschieden:
 - [`.github/workflows/CI.yml`](../.github/workflows/CI.yml): Continuous Integration & Artefakt-Publishing
-- [`.github/workflows/CD.yml`](../.github/workflows/CD.yml): Continuous Deployment & Delivery
+- [`.github/workflows/CD.yml`](../.github/workflows/CD.yml): Continuous Deployment & Delivery (Rollout-Strategie *Recreate*)
+- [`.github/workflows/CD-BlueGreen.yml`](../.github/workflows/CD-BlueGreen.yml): Vergleichsvariante mit der Rollout-Strategie *Blue/Green*
 
 ### Zusammenspiel der Workflows
 
@@ -190,7 +207,7 @@ flowchart TD
         G --> H["Rollout auf Staging (docker-compose.release.yml)"]
         H --> I["Health Check Validierung (/actuator/health)"]
         I --> J["Automatisierter Smoke Test (ci/smoke-test.sh)"]
-        J --> K["Rollback-Simulation (ci/rollback-simulation.sh)"]
+        J --> K["Rollback-Test (ci/rollback-test.sh)"]
         K --> L["Step Summary: Monitoring- & Deployment-Nachweis"]
         L --> M{"Ist Release-Tag (v*)?"}
         M -->|Ja| N["Automatischer GitHub Release mit Release Notes"]
@@ -201,11 +218,27 @@ flowchart TD
 ```
 
 ### Trigger-Konfiguration in `CD.yml`
-1. **`workflow_run`:** Startet vollautomatisch, wenn der Workflow `CI (V2)` auf dem Branch `main` mit Status `success` abschliesst.
+1. **`workflow_run`:** Startet automatisch, sobald der Workflow `CI (V2)` erfolgreich abgeschlossen ist. Woher der CI-Lauf stammt, entscheidet über Umgebung und Artefakt:
+
+| Auslösender CI-Lauf | Umgebung | Image-Tag | Freigabe |
+|---|---|---|---|
+| Push auf `main` | `staging` | `sha-<commit>` | keine, vollautomatisch (**Continuous Deployment**) |
+| Release-Tag `v1.0.0` | `production` | `1.0.0` | manuelle Freigabe im GitHub Environment (**Continuous Delivery**) |
+
 2. **`workflow_dispatch`:** Ermöglicht den manuellen Start durch Entwickler oder die Lehrperson mit individueller Parameterauswahl:
    - `image_tag`: Angabe des gewünschten Version-Tags (auch für gezielte Rollbacks auf frühere Versionen)
    - `environment`: Wahl zwischen `staging` und `production`
-   - `simulate_rollback`: Optionale Ausführung der Rollback-Prüfung
+   - `simulate_rollback`: Optionale Ausführung des praktischen Rollback-Tests
+
+### Continuous Delivery: manuelle Freigabe für Production
+Der Deploy-Job ist einem **GitHub Environment** zugeordnet (`staging` bzw. `production`). Für `production` ist in den Repository-Settings unter *Environments → production → Required reviewers* ein Teammitglied hinterlegt. Dadurch:
+- läuft ein Deployment auf Staging **vollautomatisch** durch (Continuous Deployment),
+- **wartet** ein Production-Deployment auf die manuelle Freigabe durch eine Person (Continuous Delivery),
+- ist im Environment-Verlauf nachvollziehbar, wer welche Version freigegeben hat.
+
+Nach erfolgreichem Production-Deployment publiziert der Job `release` automatisch einen **GitHub Release** mit Release Notes und den Referenzen auf die versionierten Artefakte.
+
+> Screenshot der Environment-Freigabe (Required reviewer) und des erzeugten GitHub Release: _TODO_
 
 ---
 
@@ -222,17 +255,75 @@ flowchart TD
 
 ### Bewertung der Rollout-Strategien für unser Projekt
 
-1. **Gewählte Implementierung für Staging (CI/CD):** **Recreate mit Health Check Verifikation**
-   - Die Staging-Umgebung nutzt `docker-compose.release.yml`. Der Container-Tausch dauert nur wenige Sekunden. Nach dem Start blockiert der Workflow, bis die Actuator Health Checks beider Services `UP` melden. Anschliessend validiert der Smoke Test die Funktionsfähigkeit. Da Staging eine Test- und Abnahmeumgebung ist, ist die minimale Downtime von wenigen Sekunden vernachlässigbar und die Konfiguration extrem schlank.
-2. **Evaluierter Ansatz für Produktion: Zero-Downtime Rolling Update**
-   - In einer Kubernetes- oder Cloud-Umgebung (z. B. AWS ECS/EKS) würden wir auf `RollingUpdate` setzen. Dabei werden neue Container hochgefahren und erst nach bestandenem Health Check in den Load Balancer aufgenommen, bevor die alten Container heruntergefahren werden.
-3. **Evaluierter Ansatz: Blue/Green Deployment**
-   - Zwei identische Umgebungen (Blue = aktiv, Green = inaktiv) hinter einem Load Balancer (z. B. Nginx oder AWS ALB). Bietet den schnellsten Rollback durch sofortiges Zurückschalten des Datenverkehrs, verdoppelt jedoch die Infrastrukturkosten für die Zeit des parallelen Betriebs.
+Wir haben **zwei Rollout-Strategien umgesetzt und getestet** und eine dritte konzeptionell bewertet:
+
+#### Umgesetzte Variante 1: Recreate mit Health Check Verifikation ([`CD.yml`](../.github/workflows/CD.yml))
+Die Umgebung nutzt `docker-compose.release.yml`. Der Container-Tausch dauert nur wenige Sekunden. Nach dem Start blockiert der Workflow, bis die Actuator Health Checks beider Services `UP` melden, anschliessend validiert der Smoke Test die Funktionsfähigkeit.
+- *Vorteil:* Sehr schlanke Konfiguration, nur eine Umgebung nötig.
+- *Nachteil:* Kurze Downtime während des Container-Tauschs, ein Rollback erfordert ein erneutes Deployment (gemessene MTTR ca. 16s).
+- *Einsatz bei uns:* Standard-Rollout für Staging und Production.
+
+#### Umgesetzte Variante 2: Blue/Green mit nginx ([`CD-BlueGreen.yml`](../.github/workflows/CD-BlueGreen.yml))
+Zwei vollständige Umgebungen laufen parallel als eigene Compose-Projekte (`ticket-system-blue`, `ticket-system-green`), davor ein nginx-Reverse-Proxy. Umgesetzt in [`ci/bluegreen-deploy.sh`](../Code/Ticket_System/ci/bluegreen-deploy.sh) und [`ci/bluegreen-switch.sh`](../Code/Ticket_System/ci/bluegreen-switch.sh):
+
+1. Die neue Version wird in die **inaktive** Farbe ausgerollt, während die aktive weiterhin allen Traffic bedient.
+2. Der Smoke Test läuft direkt gegen die inaktive Umgebung. Schlägt er fehl, wird **nicht** umgeschaltet und die Nutzer merken nichts vom fehlerhaften Release.
+3. Erst bei Erfolg schaltet der nginx-Proxy den Traffic um (Konfiguration ersetzen und `nginx -s reload`).
+4. Ein weiterer Smoke Test über den Proxy bestätigt den Wechsel.
+5. Die alte Umgebung läuft weiter, dadurch ist der Rollback ein reiner Traffic-Switch.
+
+- *Vorteil:* Zero Downtime, fehlerhafte Releases erreichen die Nutzer nie, Rollback in Sekunden.
+- *Nachteil:* Doppelte Infrastruktur (zwei Datenbanken, vier Service-Container), höhere Komplexität.
+- *Einsatz bei uns:* Als Vergleichsvariante umgesetzt und getestet.
+
+**Nachweis aus unserem lokalen Testlauf:**
+```
+[BLUE/GREEN] Rollout von Version v2
+ Aktive Umgebung:  blue
+ Ziel-Umgebung:    green (inaktiv)
+[Schritt 2/4] Smoke Test gegen die inaktive Umgebung (kein Nutzer-Traffic)
+[Schritt 3/4] Traffic auf green umschalten
+ BLUE/GREEN ROLLOUT ERFOLGREICH -> Aktiv: green (Version v2)
+
+--> Schalte Traffic von green auf blue
+[+] Traffic laeuft jetzt auf blue (Dauer inkl. Validierung: 2s)
+```
+Während des Umschaltens haben wir parallel alle 0.25s Anfragen gegen den Proxy gesendet: **60 von 60 Anfragen wurden mit HTTP 200 beantwortet**, der Wechsel erfolgte also ohne Ausfall.
+
+> Log-Auszug aus einem Lauf des Workflows `CD Variante Blue/Green` auf GitHub Actions: _TODO_
+
+#### Konzeptionell bewertet: Rolling Update
+In einer Kubernetes- oder Cloud-Umgebung (z. B. AWS ECS/EKS) würden wir auf `RollingUpdate` setzen. Neue Container werden hochgefahren und erst nach bestandenem Health Check in den Load Balancer aufgenommen, bevor die alten heruntergefahren werden. Mit reinem Docker Compose ist das nicht sinnvoll abbildbar, da ein Loadbalancer mit dynamischer Service-Discovery fehlt.
 
 ### Skalierbarkeit und Ausfallsicherheit (Architektur-Analyse)
-- **Stateless Microservices:** Weder `employee-service` noch `ticket-service` halten lokalen Sitzungszustand im Speicher. Beide können horizontal auf $N$ Instanzen skaliert werden:
-  - Docker Compose: `docker compose up --scale ticket-service=3`
-  - Kubernetes: Automatische Skalierung via **Horizontal Pod Autoscaler (HPA)** zwischen 2 und 5 Pods basierend auf CPU-Auslastung (> 75%).
+- **Stateless Microservices:** Weder `employee-service` noch `ticket-service` halten lokalen Sitzungszustand im Speicher. Jede Anfrage ist unabhängig, der gesamte Zustand liegt in PostgreSQL. Damit sind beide Services horizontal skalierbar.
+- **Skalierung mit Docker Compose:** Der Befehl `docker compose up --scale ticket-service=3` funktioniert **nicht direkt** mit unserer Release-Konfiguration, weil ein fester Host-Port (`8082:8082`) nur einmal vergeben werden kann. Für mehrere Instanzen braucht es einen vorgelagerten Loadbalancer, der die Container über das Docker-Netzwerk anspricht. Genau diese Komponente bringt unsere Blue/Green-Variante bereits mit (siehe unten).
+- **Kubernetes:** Automatische Skalierung via **Horizontal Pod Autoscaler (HPA)** zwischen 2 und 5 Pods basierend auf CPU-Auslastung (> 75%).
+- **Ressourcenbegrenzung:** In [`docker-compose.release.yml`](../Code/Ticket_System/docker-compose.release.yml) sind pro Container Limits gesetzt (`mem_limit`, `cpus`), damit ein einzelner Container den Host nicht blockiert.
+- **Self-Healing:** Alle Container laufen mit `restart: unless-stopped`. Stürzt ein Prozess ab, startet Docker den Container automatisch neu.
+
+#### Horizontale Skalierung über den Blue/Green-Proxy
+Der nginx-Proxy aus unserer Blue/Green-Variante ist die Grundlage für echte horizontale Skalierung, da die Services nicht mehr direkt über feste Host-Ports angesprochen werden:
+
+1. Im Compose-File wird die Port-Bindung der Services entfernt, sie sind dann nur noch im Docker-Netzwerk erreichbar.
+2. `docker compose -p ticket-system-blue up -d --scale ticket-service=3` startet drei Instanzen im selben Netzwerk.
+3. Im nginx wird pro Service ein `upstream`-Block mit den Instanzen definiert, nginx verteilt die Anfragen per Round Robin:
+
+```nginx
+upstream ticket_backend {
+  server ticket-system-blue-ticket-service-1:8082;
+  server ticket-system-blue-ticket-service-2:8082;
+  server ticket-system-blue-ticket-service-3:8082;
+}
+server {
+  listen 81;
+  location / { proxy_pass http://ticket_backend; }
+}
+```
+
+4. Fällt eine Instanz aus, nimmt nginx sie aus der Verteilung und die übrigen Instanzen bedienen den Traffic weiter (Ausfallsicherheit innerhalb einer Farbe).
+
+Umgesetzt und getestet haben wir den Proxy mit je einer Instanz pro Farbe, da unser Lastprofil im Projektrahmen keine Mehrfachinstanzen erfordert. Die Erweiterung auf mehrere Instanzen beschränkt sich auf die oben gezeigte `upstream`-Konfiguration.
 - **Stateful Database:** PostgreSQL ist zustandsbehaftet. In Kubernetes sichern wir dies über ein `PersistentVolumeClaim` (PVC) ab. Im Cloud-Betrieb (AWS) wird dies über einen Managed Service wie **Amazon RDS** mit Multi-AZ-Replikation realisiert.
 
 ---
@@ -287,7 +378,7 @@ Nach dem Rollout führt die Pipeline den Smoke Test aus:
 - **Schritt 3:** Anlage und Abruf eines Tickets via `POST /api/tickets` unter Referenzierung des neuen Mitarbeiters (Verifikation der Inter-Service-Kommunikation!)
 - **Schritt 4:** Erfolgsmeldung (Exit-Code 0) oder Abbruch mit Fehlercode 1 bei fehlerhafter Antwort.
 
-Für lokale Windows-Tests steht das äquivalente PowerShell-Skript [`ci/smoke-test.ps1`](../Code/Ticket_System/ci/smoke-test.ps1) zur Verfügung.
+Unter Windows wird das Skript über Git Bash ausgeführt (`bash ci/smoke-test.sh`).
 
 ### 4. Monitoring-Nachweis in der Pipeline
 Die CD-Pipeline schreibt nach jedem Lauf einen zusammenfassenden Bericht direkt in das **GitHub Step Summary**:
@@ -316,12 +407,42 @@ Wie in unserer Theoriearbeit ([T4](../Theorie/T4_Theorie_Continuous_Deployment.m
   2. *Parallel Run:* Die neue Softwareversion schreibt in beide Strukturen. Ein Rollback auf die Vorversion ist jederzeit verlustfrei möglich.
   3. *Contract:* Erst wenn Version 2 über längere Zeit stabil in Produktion läuft, werden alte Felder in einer separaten Migration bereinigt.
 
-### Praktischer Nachweis: Rollback-Simulation ([`ci/rollback-simulation.sh`](../Code/Ticket_System/ci/rollback-simulation.sh))
-Um die Funktionsfähigkeit der Rollback-Strategie zu beweisen, ist in der Pipeline ein automatisierter Simulationstest integriert:
-1. Das Skript simuliert ein fehlerhaftes Release (nicht erreichbare Ports / defekte Konfiguration).
-2. Der Smoke Test schlägt planmässig fehl und fängt den Fehler ab.
-3. Der Rollback-Mechanismus greift automatisch, stoppt die fehlerhafte Instanz und re-deployt das stabile Tag.
-4. Das System bestätigt die erfolgreiche Wiederherstellung mit `CD ROLLBACK VALIDATION: PASSED`.
+### Praktischer Nachweis: Rollback-Test ([`ci/rollback-test.sh`](../Code/Ticket_System/ci/rollback-test.sh))
+Um die Funktionsfähigkeit der Rollback-Strategie zu beweisen, führt die Pipeline nach jedem Rollout einen echten Rollback-Test an der laufenden Umgebung durch:
+
+1. **Ausgangslage prüfen:** Der Smoke Test bestätigt, dass die stabile Version läuft.
+2. **Fehlerhaftes Release ausrollen:** Der `employee-service` wird über die Override-Datei [`ci/docker-compose.broken.yml`](../Code/Ticket_System/ci/docker-compose.broken.yml) mit einer ungültigen Datenbank-URL neu gestartet. Das entspricht einem realistischen Fehlerfall (falsche Konfiguration, nicht erreichbare Datenbank).
+3. **Fehlererkennung:** Der Smoke Test läuft gegen das fehlerhafte Release und **muss** fehlschlagen. Schlägt er nicht fehl, bricht der Test mit Exit-Code 1 ab, denn dann würde der Mechanismus einen echten Fehler nicht erkennen.
+4. **Automatischer Rollback:** Die Umgebung wird mit dem stabilen Image-Tag neu ausgerollt.
+5. **Validierung:** Ein erneuter Smoke Test bestätigt die Wiederherstellung, und die Zeit bis zur Wiederherstellung (MTTR) wird gemessen.
+
+Der Test ist nur dann erfolgreich, wenn der Fehler erkannt **und** der Rollback validiert wurde.
+
+**Log-Auszug eines lokalen Testlaufs:**
+```
+[Schritt 1/5] Ausgangslage pruefen: laeuft die stabile Version?
+[+] Stabile Version test laeuft und ist funktionsfaehig.
+[Schritt 2/5] Fehlerhaftes Release ausrollen (ungueltige Datenbank-Konfiguration)
+[Schritt 3/5] Post-Deployment Smoke Test (muss fehlschlagen)
+[!] ALARM: Smoke Test fehlgeschlagen, fehlerhaftes Release wurde erkannt.
+[Schritt 4/5] AUTOMATISCHER ROLLBACK auf die stabile Version test
+[Schritt 5/5] Validierung nach dem Rollback
+ ROLLBACK-TEST BESTANDEN
+ - Zeit bis zur Wiederherstellung (MTTR): 16s
+```
+
+> Log-Auszug aus einem Pipeline-Lauf auf GitHub Actions: _TODO_
+
+---
+
+## 9b. Nicht umgesetzt: Feature Toggles
+In unserer Theoriearbeit T4 haben wir Feature Toggles als dritte Rollback-Strategie beschrieben (ein Feature per Konfiguration deaktivieren, statt die ganze Version zurückzurollen).
+
+Wir haben uns bewusst **gegen eine Umsetzung im Code** entschieden:
+- Unsere Version 1.0 enthält keine optionalen oder unfertigen Features, die sich sinnvoll schalten liessen. Ein Toggle ohne Anwendungsfall würde die Codebasis nur unnötig verkomplizieren.
+- Die beiden umgesetzten Rollback-Strategien (Re-Deployment eines älteren Tags und Traffic-Switching) decken unsere Fehlerfälle vollständig ab.
+
+Sobald ein Feature schrittweise ausgerollt werden soll, würden wir es wie in T4 beschrieben über eine Property in `application.properties` steuern, die beim Container-Start als Umgebungsvariable gesetzt wird.
 
 ---
 
@@ -333,7 +454,10 @@ Um die Funktionsfähigkeit der Rollback-Strategie zu beweisen, ist in der Pipeli
 | **Silent Failures / Nicht abgedeckte Edge-Cases** | Smoke Test prüft nur Happy Path; tieferliegende Business-Logic-Fehler bleiben unentdeckt | Vollständige Systemtest-Suite in der CI vor dem Deployment; Alerting auf HTTP 5xx-Fehlerraten |
 | **Ausfall der Container Registry (GHCR)** | Neue Deployments können Images nicht pullen | Registry Caching auf Runnern; Multi-Region Fallback-Registry in Enterprise-Umgebungen |
 | **Secret-Leakage in Logdateien** | Sensible Passwörter tauchen in Pipeline-Logs auf | Automatische Maskierung durch GitHub Secrets; keine Ausgabe von Umgebungsvariablen im Klartext |
-| **Ressourcen-Engpässe auf dem Zielhost** | Container stürzen wegen Out-of-Memory (OOM) ab | Ressourcen-Limits (CPU & Memory) in Docker Compose und Kubernetes konfiguriert |
+| **Ressourcen-Engpässe auf dem Zielhost** | Container stürzen wegen Out-of-Memory (OOM) ab | `mem_limit` und `cpus` pro Container in `docker-compose.release.yml`; zusätzlich `restart: unless-stopped` für den automatischen Neustart |
+| **Kurzlebige Umgebung auf dem Runner** | Unsere Production-Umgebung existiert nur während des Pipeline-Laufs. Ein Dauerbetrieb, echte Nutzerlast und Langzeit-Monitoring lassen sich damit nicht nachweisen | Für einen echten Betrieb müsste die Compose-Umgebung auf einen dauerhaft laufenden Server (Cloud-VM) deployt werden; die Pipeline würde dann per SSH statt lokal deployen. Die Deployment-Schritte selbst bleiben identisch |
+| **Keine Datenpersistenz in Staging/Production** | Die Datenbank wird bei jedem Lauf neu aus dem Init-Skript aufgebaut, ein Rollback mit echten Nutzerdaten ist damit nicht nachgestellt | Bewusste Entscheidung für reproduzierbare Testläufe. Für den Dauerbetrieb: benanntes Volume bzw. Managed Database mit Backups vor jedem Deployment |
+| **Keine Authentifizierung** | Die API ist ohne Login erreichbar, jeder mit Netzwerkzugriff kann Daten anlegen und lesen | Im Projektrahmen akzeptiert, da keine echten Personendaten verarbeitet werden. Nächster Schritt: Spring Security mit BCrypt (siehe Abschnitt 4.5) |
 
 ---
 
@@ -345,12 +469,22 @@ Die Vorgabe *"Die Lehrperson muss vollen Zugriff auf Ihre Pipelines und Prozesse
 2. **Öffentliche Artefakte:** Die in P3b eingerichteten GHCR-Packages sind öffentlich lesbar:
    - `ghcr.io/yaracorder0/m324_gruppe4/employee-service`
    - `ghcr.io/yaracorder0/m324_gruppe4/ticket-service`
-3. **Manueller Start via `workflow_dispatch`:** Die Lehrperson kann im GitHub-Reiter **Actions** auf **`CD (Continuous Deployment & Delivery)`** klicken, auf **Run workflow** drücken und das Deployment mit beliebigem Image-Tag ausführen.
+3. **Manueller Start via `workflow_dispatch`:** Die Lehrperson kann im GitHub-Reiter **Actions** auf **`CD (Continuous Deployment & Delivery)`** klicken, auf **Run workflow** drücken und das Deployment mit beliebigem Image-Tag ausführen. Ebenso lässt sich die Variante **`CD Variante Blue/Green`** manuell starten, um den Zero-Downtime-Rollout und den Rollback per Traffic-Switch zu beobachten.
+
+> **Hinweis:** Nur Images, die nach der Einführung von Spring Boot Actuator gebaut wurden, stellen `/actuator/health` bereit. Für manuelle Läufe deshalb `latest`, einen `sha-`-Tag oder ein Release ab der nächsten Version verwenden.
 4. **Lokale Reproduzierbarkeit:** Mit einem einzigen Befehl kann die Lehrperson die Staging-Umgebung lokal starten:
    ```bash
    cd Code/Ticket_System
+   # Variante Recreate
    docker compose -f docker-compose.release.yml up -d
    bash ci/smoke-test.sh
+   bash ci/rollback-test.sh          # praktischer Rollback-Test
+
+   # Variante Blue/Green
+   bash ci/bluegreen-deploy.sh 1.0.0 # stabile Version als Blue
+   bash ci/bluegreen-deploy.sh 1.1.0 # neue Version als Green inkl. Traffic-Switch
+   bash ci/bluegreen-switch.sh blue  # Rollback in Sekunden
+   bash ci/bluegreen-down.sh         # aufraeumen
    ```
 
 ---

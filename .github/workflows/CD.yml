@@ -1,18 +1,25 @@
 name: CD (Continuous Deployment & Delivery)
 
 # CD-Workflow fuer P4:
-# 1. Startet automatisch nach erfolgreichem Durchlauf der CI-Pipeline (CI (V2)) auf main.
-# 2. Kann jederzeit manuell via workflow_dispatch gestartet werden (mit Wahl des Image-Tags fuer Rollout oder Rollback).
-# 3. Rollt das versionierte Artefakt aus P3b auf die Staging-Umgebung aus (docker-compose.release.yml).
-# 4. Validiert den Rollout mittels Spring Boot Actuator Health Checks und automatisierten Smoke Tests.
-# 5. Fuehrt eine praktische Rollback-Simulation zur Verifikation der Ausfallsicherheit durch.
-# 6. Bei Release-Tags (v*) wird zusaetzlich ein offizieller GitHub Release publiziert.
+# 1. Continuous Deployment: nach erfolgreichem CI-Lauf auf main wird vollautomatisch
+#    auf die Staging-Umgebung deployt (Image-Tag sha-<commit>).
+# 2. Continuous Delivery: nach erfolgreichem CI-Lauf auf einem Release-Tag v* wird auf
+#    Production deployt. Das GitHub Environment "production" verlangt eine manuelle Freigabe.
+# 3. Manueller Start via workflow_dispatch mit freier Wahl von Image-Tag und Umgebung
+#    (auch fuer ein gezieltes Rollback auf eine aeltere Version).
+# 4. Rollout des versionierten Artefakts aus P3b (docker-compose.release.yml, Strategie: Recreate).
+# 5. Validierung mit Spring Boot Actuator Health Checks und automatisierten Smoke Tests.
+# 6. Praktischer Rollback-Test (fehlerhaftes Release -> Erkennung -> Rollback -> Validierung).
+# 7. Bei Release-Tags wird zusaetzlich ein GitHub Release publiziert.
+#
+# Die Blue/Green-Variante als zweite Rollout-Strategie liegt in CD-BlueGreen.yml.
 
 on:
+  # Laeuft nach jedem erfolgreichen CI-Lauf: auf main (-> Staging, vollautomatisch)
+  # und bei Release-Tags v* (-> Production, mit manueller Freigabe = Continuous Delivery)
   workflow_run:
     workflows: [ "CI (V2)" ]
     types: [ completed ]
-    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       image_tag:
@@ -28,19 +35,19 @@ on:
           - production
         default: "staging"
       simulate_rollback:
-        description: "Rollback-Simulation zur Verifikation ausfuehren"
+        description: "Praktischen Rollback-Test ausfuehren"
         required: true
         type: boolean
         default: true
 
 # Deployments nicht mitten im Rollout abbrechen
 concurrency:
-  group: cd-${{ github.event.inputs.environment || 'staging' }}
+  group: cd-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging') }}
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy to ${{ github.event.inputs.environment || 'staging' }}
+    name: Deploy to ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging') }}
     # Nur ausfuehren bei manuellem Start oder wenn der vorangehende CI-Lauf erfolgreich war
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
@@ -48,6 +55,15 @@ jobs:
     permissions:
       contents: read
       packages: read
+    # GitHub Environment: fuer "production" ist in den Repository-Settings ein
+    # Required Reviewer hinterlegt. Der Job wartet dort auf die manuelle Freigabe
+    # (= Continuous Delivery), waehrend Staging vollautomatisch deployt wird.
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging') }}
+    outputs:
+      tag: ${{ steps.artifact.outputs.tag }}
+      env_name: ${{ steps.artifact.outputs.env_name }}
+      is_release: ${{ steps.artifact.outputs.is_release }}
 
     steps:
       - name: Checkout
@@ -56,21 +72,37 @@ jobs:
       # Bestimme das genaue versionierte Artefakt aus P3b
       - name: Versioniertes Artefakt bestimmen
         id: artifact
+        env:
+          # Bei einem CI-Lauf auf einem Tag steht hier der Tag-Name (z.B. v1.0.0),
+          # bei einem Lauf auf main der Branch-Name
+          HEAD_REF: ${{ github.event.workflow_run.head_branch }}
         run: |
           REPO_LOWER="${GITHUB_REPOSITORY,,}"
+          IS_RELEASE="false"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.image_tag }}"
             COMMIT_SHA="${{ github.sha }}"
+            ENV_NAME="${{ github.event.inputs.environment }}"
+          elif [ "${HEAD_REF#v}" != "$HEAD_REF" ]; then
+            # Release-Tag v1.0.0 -> Image-Tag 1.0.0 (SemVer aus P3b)
+            TAG="${HEAD_REF#v}"
+            COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+            ENV_NAME="production"
+            IS_RELEASE="true"
           else
             HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
             SHORT_SHA=$(echo "$HEAD_SHA" | cut -c1-7)
             TAG="sha-${SHORT_SHA}"
             COMMIT_SHA="$HEAD_SHA"
+            ENV_NAME="staging"
           fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "commit=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "registry=ghcr.io/${REPO_LOWER}" >> "$GITHUB_OUTPUT"
-          echo "env_name=${{ github.event.inputs.environment || 'staging' }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${TAG}"
+            echo "commit=${COMMIT_SHA}"
+            echo "registry=ghcr.io/${REPO_LOWER}"
+            echo "env_name=${ENV_NAME}"
+            echo "is_release=${IS_RELEASE}"
+          } >> "$GITHUB_OUTPUT"
 
       # Login in GitHub Container Registry zum Beziehen der versionierten Artefakte
       - name: Login GitHub Container Registry
@@ -80,8 +112,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Rollout auf Staging-Umgebung mit docker-compose.release.yml
-      - name: Rollout Staging-Umgebung
+      # Rollout mit docker-compose.release.yml (Strategie: Recreate)
+      - name: Rollout Umgebung
         working-directory: Code/Ticket_System
         env:
           IMAGE_REGISTRY: ${{ steps.artifact.outputs.registry }}
@@ -100,6 +132,7 @@ jobs:
 
       # Health Check Validierung (Spring Boot Actuator)
       - name: Health Check Validierung
+        id: health
         working-directory: Code/Ticket_System
         run: |
           echo "Warte auf gesunden Zustand der Services (/actuator/health)..."
@@ -122,22 +155,44 @@ jobs:
 
       # Automatisierter Smoke Test nach dem Deployment
       - name: Smoke Tests ausfuehren
+        id: smoke
         working-directory: Code/Ticket_System
         run: bash ci/smoke-test.sh http://localhost:8081 http://localhost:8082
 
-      # Praktische Pruefung der Rollback-Strategie
+      # Praktische Pruefung der Rollback-Strategie:
+      # fehlerhaftes Release ausrollen -> Fehler erkennen -> zurueck auf den stabilen Tag
       - name: Rollback-Mechanismus ueberpruefen
+        id: rollback
         if: github.event.inputs.simulate_rollback != 'false'
         working-directory: Code/Ticket_System
-        run: bash ci/rollback-simulation.sh "${{ steps.artifact.outputs.tag }}"
+        env:
+          IMAGE_REGISTRY: ${{ steps.artifact.outputs.registry }}
+          IMAGE_TAG: ${{ steps.artifact.outputs.tag }}
+        run: bash ci/rollback-test.sh
 
       # Monitoring & Nachweis in GitHub Step Summary ausgeben
       - name: Deployment- & Monitoring-Nachweis dokumentieren
         if: always()
         working-directory: Code/Ticket_System
+        env:
+          # Tatsaechliche Resultate der Schritte, damit der Nachweis dem Lauf entspricht
+          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
         run: |
           EMP_HEALTH=$(curl -s http://localhost:8081/actuator/health 2>/dev/null || echo '{"status":"DOWN"}')
           TCK_HEALTH=$(curl -s http://localhost:8082/actuator/health 2>/dev/null || echo '{"status":"DOWN"}')
+
+          # Schrittresultat in ein lesbares Symbol uebersetzen
+          result() {
+            case "$1" in
+              success)   echo "✅ bestanden" ;;
+              failure)   echo "❌ fehlgeschlagen" ;;
+              cancelled) echo "⚠️ abgebrochen" ;;
+              skipped|"") echo "⏭️ nicht ausgefuehrt" ;;
+              *)         echo "$1" ;;
+            esac
+          }
           {
             echo "## 🚀 Continuous Deployment Nachweis (${{ steps.artifact.outputs.env_name }})"
             echo ""
@@ -148,8 +203,9 @@ jobs:
             echo "| **Deploytes Artefakt (Ticket)** | \`${{ steps.artifact.outputs.registry }}/ticket-service:${{ steps.artifact.outputs.tag }}\` |"
             echo "| **Commit** | \`${{ steps.artifact.outputs.commit }}\` |"
             echo "| **Trigger** | \`${{ github.event_name }}\` |"
-            echo "| **Smoke Test Ergebnis** | ✅ PASSED (CRUD & Inter-Service API verifiziert) |"
-            echo "| **Rollback-Pruefung** | ✅ VERIFIED (Automatische Wiederherstellung simuliert) |"
+            echo "| **Health Checks** | $(result "$HEALTH_OUTCOME") |"
+            echo "| **Smoke Test (CRUD & Inter-Service API)** | $(result "$SMOKE_OUTCOME") |"
+            echo "| **Rollback-Pruefung (fehlerhaftes Release -> Rollback)** | $(result "$ROLLBACK_OUTCOME") |"
             echo ""
             echo "### 🩺 Health Checks (Spring Boot Actuator)"
             echo "- **employee-service (/actuator/health):** \`$EMP_HEALTH\`"
@@ -182,43 +238,47 @@ jobs:
           name: cd-error-logs
           path: Code/Ticket_System/cd-error.log
 
-      # Staging-Umgebung aufraeumen
+      # Umgebung aufraeumen
       - name: Umgebung bereinigen
         if: always()
         working-directory: Code/Ticket_System
         run: docker compose -f docker-compose.release.yml down -v
 
-  # Optionale Release-Delivery Stufe bei Tags
+  # Release-Delivery Stufe: nur wenn der CI-Lauf zu einem Tag v* gehoert
+  # und das Production-Deployment erfolgreich war
   release:
     name: Continuous Delivery (GitHub Release)
     needs: [ deploy ]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.deploy.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.deploy.outputs.tag }}
 
       - name: GitHub Release publizieren
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
+          tag_name: v${{ needs.deploy.outputs.tag }}
+          name: Release v${{ needs.deploy.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## 🎉 Release ${{ github.ref_name }}
+            ## 🎉 Release v${{ needs.deploy.outputs.tag }}
             
             Dieser Release wurde durch die automatisierte CD-Pipeline erfolgreich validiert und freigegeben.
             
             ### 📦 Versionierte Container-Artefakte
-            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/employee-service:${{ github.ref_name }}`
-            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/ticket-service:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/employee-service:${{ needs.deploy.outputs.tag }}`
+            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/ticket-service:${{ needs.deploy.outputs.tag }}`
             
             ### 🚀 Deployment
             ```bash
-            IMAGE_TAG=${{ github.ref_name }} docker compose -f Code/Ticket_System/docker-compose.release.yml up -d
+            IMAGE_TAG=${{ needs.deploy.outputs.tag }} docker compose -f Code/Ticket_System/docker-compose.release.yml up -d
             ```
             
             ### ✅ Gepruefte Qualitaetsnachweise

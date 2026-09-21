@@ -12,8 +12,8 @@ set -euo pipefail
 
 EMPLOYEE_URL="${1:-${EMPLOYEE_URL:-http://localhost:8081}}"
 TICKET_URL="${2:-${TICKET_URL:-http://localhost:8082}}"
-MAX_RETRIES=30
-RETRY_INTERVAL=2
+MAX_RETRIES="${MAX_RETRIES:-30}"
+RETRY_INTERVAL="${RETRY_INTERVAL:-2}"
 
 echo "========================================================"
 echo " Starting CD Smoke Tests"
@@ -49,7 +49,7 @@ wait_for_service "ticket-service" "$TICKET_URL/actuator/health"
 # 2. Employee API Test (Create & Read)
 echo ""
 echo "[Step 2/4] Employee API Smoke Test"
-EMPLOYEE_PAYLOAD='{"firstName":"Smoke","lastName":"Tester","joinedDate":"2026-01-01"}'
+EMPLOYEE_PAYLOAD='{"firstName":"Smoke","lastName":"Tester","joinedDate":"2026-01-01","skillLevel":3}'
 
 CREATE_EMP_RES=$(curl -s -w "\n%{http_code}" -X POST "$EMPLOYEE_URL/api/employees" \
   -H "Content-Type: application/json" \
@@ -77,7 +77,7 @@ echo "[+] Verified employee retrieval (HTTP $GET_EMP_STATUS)"
 # 3. Ticket API Test & Inter-Service Communication
 echo ""
 echo "[Step 3/4] Ticket API & Inter-Service Communication Smoke Test"
-TICKET_PAYLOAD="{\"title\":\"CD Rollout Validation\",\"description\":\"Testing automated deployment pipeline\",\"assignedEmployeeId\":$EMPLOYEE_ID}"
+TICKET_PAYLOAD="{\"title\":\"CD Rollout Validation\",\"description\":\"Testing automated deployment pipeline\",\"status\":\"OPEN\",\"employeeId\":$EMPLOYEE_ID}"
 
 CREATE_TICKET_RES=$(curl -s -w "\n%{http_code}" -X POST "$TICKET_URL/api/tickets" \
   -H "Content-Type: application/json" \

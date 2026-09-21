@@ -1,0 +1,22 @@
+# Reverse Proxy fuer das Blue/Green Deployment.
+# ACTIVE_COLOR wird vom Skript ersetzt und bestimmt, welche Umgebung Traffic erhaelt.
+events {}
+
+http {
+  # Aktive Farbe: ACTIVE_COLOR
+  server {
+    listen 80;
+    location / {
+      proxy_pass http://ticket-system-ACTIVE_COLOR-employee-service-1:8081;
+      proxy_set_header Host $host;
+    }
+  }
+
+  server {
+    listen 81;
+    location / {
+      proxy_pass http://ticket-system-ACTIVE_COLOR-ticket-service-1:8082;
+      proxy_set_header Host $host;
+    }
+  }
+}

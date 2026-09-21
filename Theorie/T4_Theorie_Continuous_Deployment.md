@@ -472,19 +472,21 @@ Für unser **Ticket-System** haben wir die theoretischen Konzepte pragmatisch au
 * **Begründung:** Ein vollwertiger Kubernetes-Cluster oder Docker Swarm wäre für den Umfang unseres Ticket-Systems ein technischer Overkill. Docker Compose ermöglicht eine einfache, reproduzierbare und isolierte Ausführung auf jeder Zielumgebung.
 
 ### 2. Deployment-Strategie & Rollback: Recreate & Image-basiertes Rollback
-* **Umsetzung:** Bei einem neuen Release wird der alte Container gestoppt und der neue gestartet (*Recreate*). Für ein Rollback wird in der `docker-compose.yml` einfach das Image-Tag auf die vorherige stabile Version geändert (z. B. `v1.0.1` statt `v1.0.2`).
+* **Umsetzung:** Bei einem neuen Release wird der alte Container gestoppt und der neue gestartet (*Recreate*). Für ein Rollback wird das Image-Tag auf die vorherige stabile Version gesetzt (z. B. `1.0.0` statt `1.1.0`). Zusätzlich haben wir in P4 ein **Blue/Green Deployment** mit nginx als Vergleichsvariante umgesetzt, bei dem der Rollback ein reiner Traffic-Switch ist.
 * **Begründung:** Da unser System keine 24/7-Zero-Downtime-Anforderung besitzt, ist eine kurze Wartungsauszeit (wenige Sekunden beim Container-Wechsel) akzeptabel. Wir sparen uns dadurch die hohe Komplexität und die doppelten Infrastrukturkosten eines Blue/Green-Deployments.
 
-### 3. Feature-Steuerung: Feature Toggles via Application Properties
-* **Umsetzung:** Neue oder optionale Funktionen steuern wir über Konfigurationsparameter in unseren `application.properties` (bzw. `application.yml`) in Spring Boot (z. B. `app.feature.new-notifications.enabled=${NEW_FEATURE_ENABLED:false}`).
+### 3. Feature-Steuerung: Feature Toggles via Application Properties (geplant, in V1.0 nicht umgesetzt)
+* **Stand im Projekt:** Version 1.0 enthält keine optionalen oder unfertigen Features, die sich sinnvoll schalten liessen. Wir haben deshalb noch keine Feature Toggles implementiert (Begründung siehe [P4](../Dokumentation/P4_Continuous_Deployment.md)).
+* **Geplante Umsetzung:** Neue oder optionale Funktionen würden wir über Konfigurationsparameter in unseren `application.properties` (bzw. `application.yml`) in Spring Boot steuern (z. B. `app.feature.new-notifications.enabled=${NEW_FEATURE_ENABLED:false}`).
 * **Begründung:** So können wir unfertige Features im Code mitführen und bei Bedarf einfach über die Konfiguration aktivieren oder deaktivieren, ohne komplexe externe Feature-Management-Tools (wie LaunchDarkly) anbinden zu müssen. Dadurch lassen sich Funktionen bei Bedarf auch direkt beim Container-Start über Docker steuern, ohne den Code neu kompilieren zu müssen.
 
 ### 4. Continuous Monitoring: Spring Boot Actuator & Docker Health-Checks
-* **Umsetzung:** Wir nutzen den `/actuator/health`-Endpunkt von Spring Boot, um den Status der Anwendung und die Verbindung zur PostgreSQL-Datenbank abzufragen. Docker führt über den `HEALTHCHECK`-Befehl regelmässige Prüfungen durch.
-* **Begründung:** Dies stellt sicher, dass abgestürzte Container von Docker automatisch neu gestartet werden und die Pipeline den Zustand der App nach dem Start sofort verifizieren kann.
+* **Umsetzung:** Wir nutzen den `/actuator/health`-Endpunkt von Spring Boot, um den Status der Anwendung und die Verbindung zur PostgreSQL-Datenbank abzufragen. Docker Compose führt über `healthcheck` regelmässige Prüfungen durch, und die Services starten über `depends_on: condition: service_healthy` in der richtigen Reihenfolge.
+* **Begründung:** Die Pipeline kann den Zustand der App nach dem Start sofort verifizieren. Ergänzend sorgt `restart: unless-stopped` dafür, dass abgestürzte Container von Docker automatisch neu gestartet werden.
 
-### 5. Passwortsicherheit: Spring Security mit BCrypt
-* **Umsetzung:** Passwörter werden vor dem Speichern in der PostgreSQL-Datenbank mit dem `BCryptPasswordEncoder` gehasht.
+### 5. Passwortsicherheit: Spring Security mit BCrypt (geplant, in V1.0 nicht umgesetzt)
+* **Stand im Projekt:** Unser Ticket-System besitzt in Version 1.0 keine Benutzerverwaltung und keine Authentifizierung. Es werden somit keine Benutzerpasswörter gespeichert, weshalb aktuell kein Passwort-Hashing nötig ist.
+* **Geplante Umsetzung:** Mit der Einführung einer Anmeldung werden Passwörter vor dem Speichern in der PostgreSQL-Datenbank mit dem `BCryptPasswordEncoder` aus Spring Security gehasht.
 * **Begründung:** BCrypt ist der etablierte Industrie-Standard in Spring Security. Es generiert automatisch ein individuelles Salt für jeden Nutzer und schützt durch seinen anpassbaren Cost Factor zuverlässig vor Brute-Force- und Rainbow-Table-Angriffen.
 
 ---
