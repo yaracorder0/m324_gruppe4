@@ -1,0 +1,8 @@
+# Override-Datei zur Simulation eines fehlerhaften Releases.
+# Der employee-service erhaelt eine ungueltige Datenbank-URL, dadurch meldet
+# /actuator/health DOWN und der Smoke Test schlaegt fehl - genau wie bei einem
+# echten fehlerhaften Deployment (falsche Config, nicht erreichbare DB).
+services:
+  employee-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://nicht-existierende-db:5432/employee_db
