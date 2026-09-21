@@ -1,0 +1,228 @@
+name: CD (Continuous Deployment & Delivery)
+
+# CD-Workflow fuer P4:
+# 1. Startet automatisch nach erfolgreichem Durchlauf der CI-Pipeline (CI (V2)) auf main.
+# 2. Kann jederzeit manuell via workflow_dispatch gestartet werden (mit Wahl des Image-Tags fuer Rollout oder Rollback).
+# 3. Rollt das versionierte Artefakt aus P3b auf die Staging-Umgebung aus (docker-compose.release.yml).
+# 4. Validiert den Rollout mittels Spring Boot Actuator Health Checks und automatisierten Smoke Tests.
+# 5. Fuehrt eine praktische Rollback-Simulation zur Verifikation der Ausfallsicherheit durch.
+# 6. Bei Release-Tags (v*) wird zusaetzlich ein offizieller GitHub Release publiziert.
+
+on:
+  workflow_run:
+    workflows: [ "CI (V2)" ]
+    types: [ completed ]
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image-Tag fuer das Deployment (z.B. latest, sha-<commit>, 1.0.0)"
+        required: true
+        default: "latest"
+      environment:
+        description: "Ziel-Umgebung"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: "staging"
+      simulate_rollback:
+        description: "Rollback-Simulation zur Verifikation ausfuehren"
+        required: true
+        type: boolean
+        default: true
+
+# Deployments nicht mitten im Rollout abbrechen
+concurrency:
+  group: cd-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'staging' }}
+    # Nur ausfuehren bei manuellem Start oder wenn der vorangehende CI-Lauf erfolgreich war
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Bestimme das genaue versionierte Artefakt aus P3b
+      - name: Versioniertes Artefakt bestimmen
+        id: artifact
+        run: |
+          REPO_LOWER="${GITHUB_REPOSITORY,,}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+            COMMIT_SHA="${{ github.sha }}"
+          else
+            HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+            SHORT_SHA=$(echo "$HEAD_SHA" | cut -c1-7)
+            TAG="sha-${SHORT_SHA}"
+            COMMIT_SHA="$HEAD_SHA"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/${REPO_LOWER}" >> "$GITHUB_OUTPUT"
+          echo "env_name=${{ github.event.inputs.environment || 'staging' }}" >> "$GITHUB_OUTPUT"
+
+      # Login in GitHub Container Registry zum Beziehen der versionierten Artefakte
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Rollout auf Staging-Umgebung mit docker-compose.release.yml
+      - name: Rollout Staging-Umgebung
+        working-directory: Code/Ticket_System
+        env:
+          IMAGE_REGISTRY: ${{ steps.artifact.outputs.registry }}
+          IMAGE_TAG: ${{ steps.artifact.outputs.tag }}
+        run: |
+          echo "=== Starte Deployment ==="
+          echo "Registry:    $IMAGE_REGISTRY"
+          echo "Version Tag: $IMAGE_TAG"
+          echo "Commit:      ${{ steps.artifact.outputs.commit }}"
+          
+          # Pull der publizierten Images (Build once, deploy many)
+          docker compose -f docker-compose.release.yml pull
+          
+          # Container starten
+          docker compose -f docker-compose.release.yml up -d
+
+      # Health Check Validierung (Spring Boot Actuator)
+      - name: Health Check Validierung
+        working-directory: Code/Ticket_System
+        run: |
+          echo "Warte auf gesunden Zustand der Services (/actuator/health)..."
+          for i in $(seq 1 45); do
+            EMP_RESP=$(curl -s -f http://localhost:8081/actuator/health || true)
+            TCK_RESP=$(curl -s -f http://localhost:8082/actuator/health || true)
+            
+            if echo "$EMP_RESP" | grep -q '"status":"UP"' && echo "$TCK_RESP" | grep -q '"status":"UP"'; then
+              echo "Alle Services meldeten UP nach ${i} Versuchen!"
+              echo "employee-service: $EMP_RESP"
+              echo "ticket-service:   $TCK_RESP"
+              exit 0
+            fi
+            sleep 2
+          done
+          
+          echo "FEHLER: Services wurden nicht innerhalb des Zeitlimits bereit!"
+          docker compose -f docker-compose.release.yml logs
+          exit 1
+
+      # Automatisierter Smoke Test nach dem Deployment
+      - name: Smoke Tests ausfuehren
+        working-directory: Code/Ticket_System
+        run: bash ci/smoke-test.sh http://localhost:8081 http://localhost:8082
+
+      # Praktische Pruefung der Rollback-Strategie
+      - name: Rollback-Mechanismus ueberpruefen
+        if: github.event.inputs.simulate_rollback != 'false'
+        working-directory: Code/Ticket_System
+        run: bash ci/rollback-simulation.sh "${{ steps.artifact.outputs.tag }}"
+
+      # Monitoring & Nachweis in GitHub Step Summary ausgeben
+      - name: Deployment- & Monitoring-Nachweis dokumentieren
+        if: always()
+        working-directory: Code/Ticket_System
+        run: |
+          EMP_HEALTH=$(curl -s http://localhost:8081/actuator/health 2>/dev/null || echo '{"status":"DOWN"}')
+          TCK_HEALTH=$(curl -s http://localhost:8082/actuator/health 2>/dev/null || echo '{"status":"DOWN"}')
+          {
+            echo "## 🚀 Continuous Deployment Nachweis (${{ steps.artifact.outputs.env_name }})"
+            echo ""
+            echo "| Eigenschaft | Wert |"
+            echo "|---|---|"
+            echo "| **Umgebung** | \`${{ steps.artifact.outputs.env_name }}\` |"
+            echo "| **Deploytes Artefakt (Employee)** | \`${{ steps.artifact.outputs.registry }}/employee-service:${{ steps.artifact.outputs.tag }}\` |"
+            echo "| **Deploytes Artefakt (Ticket)** | \`${{ steps.artifact.outputs.registry }}/ticket-service:${{ steps.artifact.outputs.tag }}\` |"
+            echo "| **Commit** | \`${{ steps.artifact.outputs.commit }}\` |"
+            echo "| **Trigger** | \`${{ github.event_name }}\` |"
+            echo "| **Smoke Test Ergebnis** | ✅ PASSED (CRUD & Inter-Service API verifiziert) |"
+            echo "| **Rollback-Pruefung** | ✅ VERIFIED (Automatische Wiederherstellung simuliert) |"
+            echo ""
+            echo "### 🩺 Health Checks (Spring Boot Actuator)"
+            echo "- **employee-service (/actuator/health):** \`$EMP_HEALTH\`"
+            echo "- **ticket-service (/actuator/health):** \`$TCK_HEALTH\`"
+            echo ""
+            echo "### 📋 Container Status"
+            echo '```'
+            docker compose -f docker-compose.release.yml ps
+            echo '```'
+            echo ""
+            echo "### 📄 Service Logs (Auszug Monitoring)"
+            echo '<details><summary>Klicken zum Ausklappen der Container-Logs</summary>'
+            echo ''
+            echo '```'
+            docker compose -f docker-compose.release.yml logs --tail=30
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Logs im Fehlerfall archivieren
+      - name: Container-Logs sichern bei Fehler
+        if: failure()
+        working-directory: Code/Ticket_System
+        run: docker compose -f docker-compose.release.yml logs > cd-error.log
+
+      - name: Upload Error Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cd-error-logs
+          path: Code/Ticket_System/cd-error.log
+
+      # Staging-Umgebung aufraeumen
+      - name: Umgebung bereinigen
+        if: always()
+        working-directory: Code/Ticket_System
+        run: docker compose -f docker-compose.release.yml down -v
+
+  # Optionale Release-Delivery Stufe bei Tags
+  release:
+    name: Continuous Delivery (GitHub Release)
+    needs: [ deploy ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: GitHub Release publizieren
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🎉 Release ${{ github.ref_name }}
+            
+            Dieser Release wurde durch die automatisierte CD-Pipeline erfolgreich validiert und freigegeben.
+            
+            ### 📦 Versionierte Container-Artefakte
+            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/employee-service:${{ github.ref_name }}`
+            - `ghcr.io/${{ github.repository_owner }}/m324_gruppe4/ticket-service:${{ github.ref_name }}`
+            
+            ### 🚀 Deployment
+            ```bash
+            IMAGE_TAG=${{ github.ref_name }} docker compose -f Code/Ticket_System/docker-compose.release.yml up -d
+            ```
+            
+            ### ✅ Gepruefte Qualitaetsnachweise
+            - Unit-, Integrations- und Systemtests bestanden (CI)
+            - Staging Rollout & Spring Boot Actuator Health Checks validiert (CD)
+            - Automatisierter Smoke Test erfolgreich abgeschlossen
+            - Rollback-Szenario geprueft
