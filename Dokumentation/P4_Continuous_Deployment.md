@@ -238,8 +238,6 @@ Der Deploy-Job ist einem **GitHub Environment** zugeordnet (`staging` bzw. `prod
 
 Nach erfolgreichem Production-Deployment publiziert der Job `release` automatisch einen **GitHub Release** mit Release Notes und den Referenzen auf die versionierten Artefakte.
 
-> Screenshot der Environment-Freigabe (Required reviewer) und des erzeugten GitHub Release: _TODO_
-
 ---
 
 ## 7. Rollout-Konzepte, Skalierung & Ausfallsicherheit
@@ -289,8 +287,6 @@ Zwei vollständige Umgebungen laufen parallel als eigene Compose-Projekte (`tick
 [+] Traffic laeuft jetzt auf blue (Dauer inkl. Validierung: 2s)
 ```
 Während des Umschaltens haben wir parallel alle 0.25s Anfragen gegen den Proxy gesendet: **60 von 60 Anfragen wurden mit HTTP 200 beantwortet**, der Wechsel erfolgte also ohne Ausfall.
-
-> Log-Auszug aus einem Lauf des Workflows `CD Variante Blue/Green` auf GitHub Actions: _TODO_
 
 #### Konzeptionell bewertet: Rolling Update
 In einer Kubernetes- oder Cloud-Umgebung (z. B. AWS ECS/EKS) würden wir auf `RollingUpdate` setzen. Neue Container werden hochgefahren und erst nach bestandenem Health Check in den Load Balancer aufgenommen, bevor die alten heruntergefahren werden. Mit reinem Docker Compose ist das nicht sinnvoll abbildbar, da ein Loadbalancer mit dynamischer Service-Discovery fehlt.
@@ -430,8 +426,6 @@ Der Test ist nur dann erfolgreich, wenn der Fehler erkannt **und** der Rollback 
  ROLLBACK-TEST BESTANDEN
  - Zeit bis zur Wiederherstellung (MTTR): 16s
 ```
-
-> Log-Auszug aus einem Pipeline-Lauf auf GitHub Actions: _TODO_
 
 ---
 
