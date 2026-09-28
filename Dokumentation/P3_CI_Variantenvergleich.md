@@ -61,26 +61,6 @@ Umgesetzt und verglichen haben wir die zwei Varianten, die sich grundsätzlich u
 
 ---
 
-## Gemeinsame Bausteine beider Varianten
-Damit der Vergleich fair ist, verwenden beide Varianten denselben Code und dieselben Schritte. Unterschiedlich ist nur die Aufteilung auf Workflows und Jobs.
-
-| Baustein | Umsetzung | Zweck |
-|---|---|---|
-| Java | `actions/setup-java` mit Temurin 21 | Gleiche Version wie lokal |
-| Caching | `cache: maven`, bei manuellem Start über `maven_cache=false` abschaltbar | Kürzere Laufzeit, Laufzeitvergleich mit/ohne Cache möglich |
-| Datenbank | `docker compose up -d` + Warteschleife mit `pg_isready` | Gleiche DB inkl. Init-Skript wie lokal |
-| Fehlerbehandlung | `timeout-minutes`, `if: always()` für Reports, DB-Logs bei Timeout | Hängende Jobs abbrechen, Fehler nachvollziehen |
-| Concurrency | `cancel-in-progress: true` pro Branch | Veraltete Läufe werden abgebrochen, spart Runner-Minuten |
-| Testauswertung | `ci/test-summary.py` schreibt eine Tabelle pro Teststufe in die Job-Summary | Resultate direkt im Actions-Tab sichtbar, ohne Logs zu durchsuchen |
-| Build-Ergebnis | Upload der JARs als `<service>-jar-<commit-sha>` (14 Tage) | Eindeutig einem Commit zugeordnet, Grundlage für P3b |
-
-### Warum `docker compose` statt `services:`?
-GitHub Actions bietet mit `services:` eigene Service-Container an. Diese werden aber **vor** dem Checkout gestartet und können deshalb unser Init-Skript `init-scripts/01-init.sql` nicht einbinden.
-Mit `docker compose up -d` nach dem Checkout verwenden wir exakt dieselbe Datenbank-Konfiguration wie lokal.
-Da Postgres den TCP-Port erst nach dem Init-Skript öffnet, wartet die Pipeline mit `pg_isready -h 127.0.0.1`, bevor die Tests starten.
-
----
-
 ## Teststufen
 Die Tests sind in drei Stufen aufgeteilt. Jede Stufe hat eine eigene Aufgabe, eigene Voraussetzungen und ein eigenes Maven-Plugin bzw. Tool.
 
@@ -136,15 +116,15 @@ Unsere Branching-Strategie aus [P1](P1_Projektsetup_und_Infrastruktur.md): keine
 
 Branches, die nicht mit `feature/` beginnen (z. B. alte Theorie-Branches), lösen bei einem Push keine Pipeline aus. Sie werden erst beim Pull Request auf `main` geprüft.
 
-### Regeln für `main` (Branch Protection)
-| Regel | Einstellung |
-|---|---|
-| Direkte Pushes auf `main` | nicht erlaubt, nur über Pull Request |
-| Review | mindestens 1 Approval eines Teammitglieds |
-| Required Status Checks | `Build & Test employee-service`, `Build & Test ticket-service`, `Systemtests (beide Services)` |
-| Branch aktuell halten | Branch muss vor dem Merge auf dem Stand von `main` sein |
+### Regeln für `main` (Branch-Ruleset)
+Die Regeln sind als **Branch-Ruleset** (*Settings → Rules → Rulesets*) mit dem Ziel "Default Branch" hinterlegt und auf **Active** gesetzt. Der Bypass-Bereich ist leer, die Regeln gelten also für alle Teammitglieder:
 
-> Nachweis der Branch-Protection-Einstellungen (Screenshot): _TODO_
+| Regel | Einstellung | Wirkung |
+|---|---|---|
+| Require a pull request before merging | 1 Approval | Direkte Pushes auf `main` sind nicht möglich, jede Änderung wird reviewt |
+| Require status checks to pass | `Build & Test employee-service`, `Build & Test ticket-service`, `Systemtests (beide Services)` | Nur Code, der alle drei Teststufen bestanden hat, gelangt auf `main` |
+| Block force pushes | aktiv | Die Historie von `main` kann nicht überschrieben werden |
+| Restrict deletions | aktiv | `main` kann nicht gelöscht werden |
 
 ---
 
@@ -212,14 +192,13 @@ Gemeinsame Dateien im Path-Filter: `pom.xml`, `docker-compose.yml`, `init-script
 | Erweiterbarkeit für P3b | Publish-Job mit `needs: system-tests` ergänzen | Publish-Step pro Workflow ergänzen, ohne Garantie, dass die Systemtests grün waren |
 
 ### Gemessene Laufzeiten
-> Die folgenden Werte werden aus den Logs unserer eigenen Pipeline-Läufe im Actions-Tab übernommen.
+Die folgenden Werte werden aus den Logs unserer eigenen Pipeline-Läufe im Actions-Tab übernommen.
 
 | Szenario                           | Variante 2 | Variante 4 |
 |------------------------------------|------------|------------|
 | Änderung nur im `employee-service` | 54s        | 1m 2s      |
 | Änderung nur im `ticket-service`   | 50s        | 1m 10s     |
 | Systemtests                       | 1m 11s     | 1m 21s     |
-
 
 
 Links zu den Pipeline-Läufen:
@@ -229,40 +208,12 @@ https://github.com/yaracorder0/m324_gruppe4/actions
 
 ## Argumentation: Weshalb Variante 2 für uns besser ist
 
-### Argument 1: Die Grösse unseres Projekts rechtfertigt keine getrennten Pipelines
-Der grösste Vorteil von Variante 4 ist, dass unveränderte Services nicht neu gebaut werden. Dieser Vorteil lohnt sich vor allem bei grossen Systemen mit vielen Services und langen Build-Zeiten.
-Unser Projekt besteht aus nur zwei kleinen Services. Zudem muss der Systemtest-Workflow in V4 bei jeder Änderung ohnehin beide Services bauen, womit die Zeitersparnis durch Path-Filter weiter schrumpft.
-In Variante 2 laufen die beiden Service-Jobs parallel, sodass die Gesamtdauer ungefähr der Dauer des langsameren Services plus den Systemtests entspricht.
-
-### Argument 2: Variante 2 funktioniert sauber mit unserer Branching-Strategie
-Damit ein Pull Request nur bei erfolgreicher Pipeline gemergt werden kann, definieren wir die CI-Jobs als **Required Status Checks** in der Branch Protection.
-
-Bei Variante 4 entsteht hier ein Problem: Ändert ein Pull Request nur einen Service, wird der Workflow des anderen Services wegen des Path-Filters gar nicht gestartet.
-Ist dieser Check als "required" markiert, bleibt er im Status **"Pending"** hängen und der Pull Request kann nicht gemergt werden.
-Das liesse sich nur mit zusätzlichen Workarounds lösen (z. B. Dummy-Workflows oder ein zusätzlicher Sammel-Job), was die Pipeline komplizierter macht.
-
-Bei Variante 2 laufen immer alle drei Jobs, womit alle ohne Zusatzaufwand als Required Checks verwendet werden können.
-
-### Argument 3: Gemeinsame Abhängigkeiten werden immer mitgetestet
-Beide Services teilen sich das Parent-`pom.xml`, `docker-compose.yml`, das Init-Skript und das CI-Hilfsskript.
-Bei Variante 4 mussten wir all diese Pfade in beide Path-Filter eintragen. Kommt später eine weitere gemeinsame Datei hinzu, müssen die Filter jedes Mal manuell angepasst werden.
-Wird ein Pfad vergessen, wird eine Änderung nicht getestet und ein Fehler gelangt unbemerkt auf `main`.
-
-Variante 2 baut immer beide Services und ist daher gegen solche Fehler geschützt. Das ist genau das Ziel von Continuous Integration: Fehler so früh wie möglich erkennen.
-
-### Argument 4: Die Systemtests passen nur in Variante 2 sauber hinein
-Systemtests brauchen beide Services gleichzeitig. In Variante 2 ist das ein zusätzlicher Job, der mit `needs` auf beide Service-Jobs wartet und genau die JARs testet, die vorher alle anderen Tests bestanden haben.
-In Variante 4 gibt es dafür keinen natürlichen Platz. Der dritte Workflow muss beide Services erneut bauen, läuft unabhängig von den Service-Workflows und kann nicht garantieren, dass deren Unit- und Integrationstests vorher erfolgreich waren.
-
-### Argument 5: Weniger Wartungsaufwand für ein Zweierteam
-Die beiden Service-Workflows von Variante 4 sind bis auf den Service-Namen identisch, dazu kommt der dritte Workflow.
-Jede Anpassung (z. B. neue Java-Version, zusätzlicher Test-Schritt, Publish-Schritt in P3b) muss in mehreren Dateien gemacht werden. Dabei besteht die Gefahr, dass die Dateien mit der Zeit auseinanderlaufen.
-Bei Variante 2 befindet sich die gesamte CI-Logik in einer Datei, was für ein kleines Team übersichtlicher und einfacher zu reviewen ist.
-
-### Argument 6: Bessere Nachvollziehbarkeit für die Lehrperson
-Die Lehrperson muss vollen Zugriff auf unsere Pipelines haben und diese ausführen können.
-Bei Variante 2 gibt es einen einzigen Workflow, der über `workflow_dispatch` manuell gestartet werden kann und in einem Lauf die Resultate aller Teststufen zeigt.
-Bei Variante 4 müssten drei Workflows gesucht, einzeln gestartet und separat ausgewertet werden.
+- **Projektgrösse:** Der Hauptvorteil von V4 ist, dass unveränderte Services nicht neu gebaut werden. Bei nur zwei kleinen Services ist die Ersparnis gering, zumal der Systemtest-Workflow in V4 ohnehin beide Services baut. In V2 laufen die Service-Jobs parallel.
+- **Branching-Strategie:** Unsere Required Status Checks funktionieren in V2 ohne Zusatzaufwand, weil immer alle drei Jobs laufen. In V4 startet der Workflow des unveränderten Service wegen des Path-Filters nicht, der Check bleibt "Pending" und blockiert den Merge.
+- **Gemeinsame Abhängigkeiten:** Beide Services teilen Parent-`pom.xml`, `docker-compose.yml`, Init-Skript und CI-Hilfsskript. In V4 müssen all diese Pfade in beiden Path-Filtern gepflegt werden. Ein vergessener Pfad bedeutet, dass eine Änderung ungetestet auf `main` gelangt. V2 baut immer beides.
+- **Systemtests:** Sie brauchen beide Services. In V2 wartet ein zusätzlicher Job mit `needs` und testet genau die JARs, die alle vorherigen Tests bestanden haben. In V4 braucht es einen dritten Workflow, der beide Services erneut baut und nicht garantieren kann, dass die Service-Tests grün waren.
+- **Wartungsaufwand:** V4 besteht aus drei Workflow-Dateien, zwei davon bis auf den Service-Namen identisch. Jede Anpassung muss mehrfach gemacht werden, und die Dateien laufen mit der Zeit auseinander. In V2 liegt die gesamte CI-Logik in einer Datei.
+- **Nachvollziehbarkeit:** Die Lehrperson startet in V2 einen einzigen Workflow (`workflow_dispatch`) und sieht in einem Lauf die Resultate aller Teststufen. In V4 müssten drei Workflows einzeln gestartet und ausgewertet werden.
 
 ---
 

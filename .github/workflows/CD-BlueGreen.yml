@@ -1,0 +1,97 @@
+name: CD Variante Blue/Green
+
+# Zweite Rollout-Strategie fuer P4 (Vergleich zur Recreate-Strategie in CD.yml):
+# Die neue Version wird zuerst in die inaktive Umgebung (Blue oder Green) ausgerollt
+# und dort getestet. Erst danach schaltet der nginx-Proxy den Traffic um.
+# Die alte Umgebung bleibt laufen, dadurch ist der Rollback ein reiner Traffic-Switch.
+on:
+  workflow_dispatch:
+    inputs:
+      stable_tag:
+        description: "Tag der aktuell stabilen Version (wird als erste Umgebung gestartet)"
+        required: true
+        default: "latest"
+      new_tag:
+        description: "Tag der neuen Version (wird in die inaktive Umgebung ausgerollt)"
+        required: true
+        default: "latest"
+
+concurrency:
+  group: cd-bluegreen
+  cancel-in-progress: false
+
+jobs:
+  bluegreen:
+    name: Blue/Green Rollout & Traffic-Switch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        working-directory: Code/Ticket_System
+    env:
+      IMAGE_REGISTRY: ghcr.io/${{ github.repository }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Ausgangslage: die stabile Version laeuft als "Blue" und erhaelt den Traffic
+      - name: Ausgangslage - stabile Version ausrollen (Blue)
+        run: bash ci/bluegreen-deploy.sh "${{ github.event.inputs.stable_tag }}"
+
+      # Neue Version parallel in Green ausrollen, testen und erst dann umschalten
+      - name: Rollout der neuen Version (Green) mit Traffic-Switch
+        id: rollout
+        run: bash ci/bluegreen-deploy.sh "${{ github.event.inputs.new_tag }}"
+
+      # Rollback-Nachweis: Traffic in Sekunden zurueck auf die alte Umgebung
+      - name: Rollback per Traffic-Switch zurueck auf Blue
+        id: switchback
+        run: bash ci/bluegreen-switch.sh blue
+
+      - name: Nachweis in der Job-Summary
+        if: always()
+        env:
+          ROLLOUT_OUTCOME: ${{ steps.rollout.outcome }}
+          SWITCH_OUTCOME: ${{ steps.switchback.outcome }}
+        run: |
+          result() {
+            case "$1" in
+              success) echo "✅ bestanden" ;;
+              failure) echo "❌ fehlgeschlagen" ;;
+              skipped|"") echo "⏭️ nicht ausgefuehrt" ;;
+              *) echo "$1" ;;
+            esac
+          }
+          {
+            echo "## Rollout-Variante: Blue/Green Deployment"
+            echo ""
+            echo "| Schritt | Ergebnis |"
+            echo "|---|---|"
+            echo "| Rollout neue Version in die inaktive Umgebung + Traffic-Switch | $(result "$ROLLOUT_OUTCOME") |"
+            echo "| Rollback per Traffic-Switch auf die alte Umgebung | $(result "$SWITCH_OUTCOME") |"
+            echo ""
+            echo "| Umgebung | Version |"
+            echo "|---|---|"
+            echo "| Blue (stabil) | \`${{ github.event.inputs.stable_tag }}\` |"
+            echo "| Green (neu) | \`${{ github.event.inputs.new_tag }}\` |"
+            echo ""
+            echo "### Laufende Container"
+            echo '```'
+            docker ps --format '{{.Names}}  {{.Image}}  {{.Status}}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Umgebungen aufraeumen
+        if: always()
+        run: bash ci/bluegreen-down.sh
