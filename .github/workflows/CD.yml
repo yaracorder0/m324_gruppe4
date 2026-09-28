@@ -48,8 +48,16 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging') }}
-    # Nur ausfuehren bei manuellem Start oder wenn der vorangehende CI-Lauf erfolgreich war
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    # Nur ausfuehren bei manuellem Start oder wenn der vorangehende CI-Lauf erfolgreich war.
+    # Zusaetzlich nur fuer main (-> Staging) und Release-Tags v* (-> Production):
+    # Auf Feature-Branches und in Pull Requests werden keine Images publiziert,
+    # ein Deployment wuerde dort mit "manifest unknown" fehlschlagen.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.head_branch == 'main' ||
+        startsWith(github.event.workflow_run.head_branch, 'v')))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
