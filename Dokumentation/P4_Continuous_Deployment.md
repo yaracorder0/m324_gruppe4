@@ -16,6 +16,7 @@ Das Dokument umfasst:
 4. Den sicheren Umgang mit Konfigurationen und Secrets (12-Factor App)
 5. Den lückenlosen Nachweis der verwendeten versionierten Artefakte
 6. Die Pipeline-Architektur mit Trennung von `CI.yml` und `CD.yml`
+6b. Die Branch- und Environment-Regeln, die Review, Tests und Freigabe erzwingen
 7. Rollout-Strategien, Skalierung und Ausfallsicherheit (inkl. Kubernetes & Blue/Green Setup)
 8. Die Validierung mittels Spring Boot Actuator Health Checks, Docker Healthchecks und automatisierten Smoke Tests
 9. Die Rollback-Strategie inklusive praktischer Verifikation / Simulation
@@ -79,7 +80,7 @@ Gemäss den Anforderungen haben wir mehrere grundlegende Ansätze für die Berei
 
 ## 2. Plattform-Entscheidung & Begründung
 
-### Gewählte Primärlösung für CI/CD: Docker Compose Release (Staging-Automatisierung)
+### Gewählte Primärlösung für CI/CD: Docker Compose Release (Staging und Production)
 Für die vollautomatische CD-Pipeline in GitHub Actions setzen wir primär auf **Docker Compose mit den publizierten GHCR-Images** ([`docker-compose.release.yml`](../Code/Ticket_System/docker-compose.release.yml)):
 
 1. **Garantierter Lehrperson-Zugriff:** Jeder GitHub Actions Runner (`ubuntu-latest`) kann Docker Compose sofort ohne externe Cloud-Accounts, VPC-Konfigurationen oder Secrets ausführen.
@@ -239,6 +240,52 @@ Der Deploy-Job ist einem **GitHub Environment** zugeordnet (`staging` bzw. `prod
 Nach erfolgreichem Production-Deployment publiziert der Job `release` automatisch einen **GitHub Release** mit Release Notes und den Referenzen auf die versionierten Artefakte.
 
 ---
+
+## 6b. Branching-Strategie, Branch- und Environment-Regeln
+
+Damit die CD-Prozesse nicht nur technisch funktionieren, sondern auch verbindlich sind, haben wir die Regeln direkt in GitHub erzwungen. Ohne diese Regeln könnte eine Person am Review und an der CI vorbei direkt auf `main` pushen und damit ungeprüft ein Deployment auslösen.
+
+### Ablauf einer Änderung
+
+```
+feature/<name>  ──Pull Request──►  main  ──Git-Tag v*──►  Release
+      │                             │                        │
+   CI (Tests)              CI + CD → Staging          CI + CD → Production
+                          (vollautomatisch)          (nach manueller Freigabe)
+```
+
+### Branch-Ruleset für `main`
+Konfiguriert unter *Settings → Rules → Rulesets* (Branch-Ruleset, Ziel: Default Branch `main`):
+
+| Regel | Einstellung | Wirkung für unsere Pipeline |
+|---|---|---|
+| **Enforcement status** | Active | Die Regeln greifen tatsächlich, der Bypass-Bereich ist leer, es gibt also keine Ausnahmen |
+| **Require a pull request before merging** | 1 Approval | Jede Änderung wird von einem Teammitglied reviewt, direkte Pushes auf `main` sind nicht möglich |
+| **Require status checks to pass** | `Build & Test employee-service`, `Build & Test ticket-service`, `Systemtests (beide Services)` | Nur Code, der alle drei Teststufen bestanden hat, gelangt auf `main` und damit in ein Deployment |
+| **Block force pushes** | aktiv | Die Historie von `main` kann nicht überschrieben werden, publizierte Artefakte bleiben ihrem Commit zuordenbar |
+| **Restrict deletions** | aktiv | `main` kann nicht versehentlich gelöscht werden |
+
+**Zusammenhang mit der CI-Variantenwahl:** Die drei Required Checks funktionieren nur deshalb ohne Zusatzaufwand, weil in unserer gewählten Variante V2 bei jedem Pull Request **immer alle Jobs** laufen. Bei der Variante V4 mit Path-Filtern wäre ein nicht gestarteter Workflow als Required Check dauerhaft "pending" und würde den Merge blockieren (siehe [P3](P3_CI_Variantenvergleich.md)).
+
+### Environment-Regeln
+Konfiguriert unter *Settings → Environments*. Die Namen entsprechen exakt den Werten, die `CD.yml` zur Laufzeit ermittelt:
+
+| | `staging` | `production` |
+|---|---|---|
+| **Required reviewers** | keine | aktiv: Freigabe durch ein Teammitglied nötig |
+| **Deployment branches and tags** | keine Einschränkung | nur Tags nach dem Muster `v*` |
+| **Environment secrets / variables** | keine | keine |
+| **Verhalten** | Deployment startet direkt nach erfolgreicher CI auf `main` | Deployment bleibt im Status *Waiting*, bis eine Person über **Review deployments** freigibt |
+| **DevOps-Begriff** | Continuous Deployment | Continuous Delivery |
+
+Damit ist die in der Theorie ([T4](../Theorie/T4_Theorie_Continuous_Deployment.md#was-ist-der-unterschied-zwischen-continuous-deployment-und-continuous-delivery)) beschriebene Unterscheidung in unserem Projekt praktisch umgesetzt: Staging geht ohne menschliches Zutun live, für Production entscheidet bewusst eine Person.
+
+Die Tag-Regel `v*` stellt zusätzlich sicher, dass in Production ausschliesslich bewusst versionierte Releases landen. Ein Deployment aus einem Feature-Branch heraus wird von GitHub abgelehnt, selbst wenn jemand den Workflow manuell mit der Umgebung `production` startet.
+
+### Bekannte Einschränkung
+Die Option *Allow administrators to bypass configured protection rules* ist im Environment `production` derzeit aktiv. Ein Repository-Administrator könnte die Freigabe damit selbst überspringen. Für den Projektrahmen ist das vertretbar, da die Freigabe im Team abgesprochen ist. Für einen echten Produktivbetrieb würden wir die Option deaktivieren, damit das Vier-Augen-Prinzip technisch erzwungen wird.
+
+> Nachweise (Screenshots): Ruleset-Übersicht, blockierter Merge mit den drei Required Checks, Environment-Konfiguration und eine wartende Production-Freigabe (*Review deployments*): _TODO_
 
 ## 7. Rollout-Konzepte, Skalierung & Ausfallsicherheit
 
@@ -451,6 +498,7 @@ Sobald ein Feature schrittweise ausgerollt werden soll, würden wir es wie in T4
 | **Ressourcen-Engpässe auf dem Zielhost** | Container stürzen wegen Out-of-Memory (OOM) ab | `mem_limit` und `cpus` pro Container in `docker-compose.release.yml`; zusätzlich `restart: unless-stopped` für den automatischen Neustart |
 | **Kurzlebige Umgebung auf dem Runner** | Unsere Production-Umgebung existiert nur während des Pipeline-Laufs. Ein Dauerbetrieb, echte Nutzerlast und Langzeit-Monitoring lassen sich damit nicht nachweisen | Für einen echten Betrieb müsste die Compose-Umgebung auf einen dauerhaft laufenden Server (Cloud-VM) deployt werden; die Pipeline würde dann per SSH statt lokal deployen. Die Deployment-Schritte selbst bleiben identisch |
 | **Keine Datenpersistenz in Staging/Production** | Die Datenbank wird bei jedem Lauf neu aus dem Init-Skript aufgebaut, ein Rollback mit echten Nutzerdaten ist damit nicht nachgestellt | Bewusste Entscheidung für reproduzierbare Testläufe. Für den Dauerbetrieb: benanntes Volume bzw. Managed Database mit Backups vor jedem Deployment |
+| **Admin-Bypass im Environment aktiv** | Ein Administrator könnte die Production-Freigabe überspringen und ohne Vier-Augen-Prinzip deployen | Option *Allow administrators to bypass* deaktivieren; im Projektrahmen ist die Freigabe im Team abgesprochen |
 | **Keine Authentifizierung** | Die API ist ohne Login erreichbar, jeder mit Netzwerkzugriff kann Daten anlegen und lesen | Im Projektrahmen akzeptiert, da keine echten Personendaten verarbeitet werden. Nächster Schritt: Spring Security mit BCrypt (siehe Abschnitt 4.5) |
 
 ---
@@ -466,7 +514,8 @@ Die Vorgabe *"Die Lehrperson muss vollen Zugriff auf Ihre Pipelines und Prozesse
 3. **Manueller Start via `workflow_dispatch`:** Die Lehrperson kann im GitHub-Reiter **Actions** auf **`CD (Continuous Deployment & Delivery)`** klicken, auf **Run workflow** drücken und das Deployment mit beliebigem Image-Tag ausführen. Ebenso lässt sich die Variante **`CD Variante Blue/Green`** manuell starten, um den Zero-Downtime-Rollout und den Rollback per Traffic-Switch zu beobachten.
 
 > **Hinweis:** Nur Images, die nach der Einführung von Spring Boot Actuator gebaut wurden, stellen `/actuator/health` bereit. Für manuelle Läufe deshalb `latest`, einen `sha-`-Tag oder ein Release ab der nächsten Version verwenden.
-4. **Lokale Reproduzierbarkeit:** Mit einem einzigen Befehl kann die Lehrperson die Staging-Umgebung lokal starten:
+4. **Nachvollziehbare Regeln:** Branch-Ruleset und Environments sind in den Repository-Settings einsehbar (siehe Abschnitt 6b). Die Lehrperson sieht damit, dass Deployments an Review, bestandene Tests und eine Freigabe gebunden sind.
+5. **Lokale Reproduzierbarkeit:** Mit einem einzigen Befehl kann die Lehrperson die Staging-Umgebung lokal starten:
    ```bash
    cd Code/Ticket_System
    # Variante Recreate
