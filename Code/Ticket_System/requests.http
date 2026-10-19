@@ -161,3 +161,51 @@ Content-Type: application/json
 ### 13. Alle Tickets abrufen (Happy Path)
 GET http://localhost:8082/api/tickets
 Accept: application/json
+
+###
+
+### --------------------------------------------------------------------
+### Z1 – KENNZAHLEN / CONTINUOUS IMPROVEMENT
+### --------------------------------------------------------------------
+
+### 14. Z1: Alle Kennzahlen abrufen (Haupt-Endpoint)
+# Liefert: totalTickets, ticketsByStatus, avgReviewToDoneHours,
+#          openTicketsPerEmployee, mostLoadedEmployeeId,
+#          ticketsInReview, ticketsDone, completionRatePercent, collectedAt
+GET http://localhost:8082/api/metrics
+Accept: application/json
+
+###
+
+### 15. Z1: System-Health prüfen (Spring Actuator)
+# Erwartete Antwort: {"status":"UP", ...} mit DB-Details
+GET http://localhost:8082/actuator/health
+Accept: application/json
+
+###
+
+### 16. Z1: JVM- und HTTP-Metriken (Spring Actuator)
+# Listet alle verfügbaren Metriken-Namen auf (z.B. jvm.memory.used, http.server.requests)
+GET http://localhost:8082/actuator/metrics
+Accept: application/json
+
+###
+
+### 17. Z1: Einzelne JVM-Metrik – Heap-Speicher
+# Zeigt den aktuell genutzten JVM Heap in Bytes
+GET http://localhost:8082/actuator/metrics/jvm.memory.used
+Accept: application/json
+
+###
+
+### 18. Z1: HTTP-Request-Metrik (nach einem GET /api/tickets)
+# Zeigt Anzahl und Durchschnittsdauer aller HTTP-Requests
+GET http://localhost:8082/actuator/metrics/http.server.requests
+Accept: application/json
+
+###
+
+### 19. Z1: App-Info abrufen
+# Zeigt app.name, app.version, app.description aus application.properties
+GET http://localhost:8082/actuator/info
+Accept: application/json
